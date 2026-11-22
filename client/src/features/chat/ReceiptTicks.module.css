@@ -1,0 +1,9 @@
+.ticks {
+  display: inline-flex;
+  align-items: center;
+  opacity: 0.75;
+}
+
+.ticks[data-status='read'] {
+  opacity: 1;
+}

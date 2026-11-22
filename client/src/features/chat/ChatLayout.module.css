@@ -1,0 +1,33 @@
+.layout {
+  display: grid;
+  grid-template-columns: var(--list-width) minmax(0, 1fr);
+  height: 100%;
+}
+
+.list {
+  min-height: 0;
+  background: var(--surface-app);
+  border-right: 1px solid var(--border-default);
+}
+
+.pane {
+  min-width: 0;
+  min-height: 0;
+  background: var(--surface-raised);
+}
+
+/* Mobile: list and pane are separate screens chosen by the route. */
+@media (max-width: 699px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .layout[data-view='list'] .pane,
+  .layout[data-view='pane'] .list {
+    display: none;
+  }
+
+  .list {
+    border-right: 0;
+  }
+}

@@ -1,0 +1,75 @@
+.imageButton {
+  display: block;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius);
+  cursor: zoom-in;
+}
+
+.image {
+  display: block;
+  width: 100%;
+  max-width: 20rem;
+  max-height: 20rem;
+  object-fit: cover;
+  border-radius: var(--radius);
+  background: var(--border-default);
+}
+
+.viewer {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: center;
+}
+
+.full {
+  max-width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+}
+
+.download,
+.file {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: inherit;
+  text-decoration: none;
+}
+
+.download {
+  min-height: var(--size-control-md);
+  font-weight: var(--weight-medium);
+  text-decoration: underline;
+}
+
+.file {
+  min-width: 12rem;
+  max-width: 18rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid currentcolor;
+  border-radius: var(--radius);
+}
+
+.file:hover {
+  text-decoration: underline;
+}
+
+.fileText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.fileName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileSize {
+  font-size: var(--text-xs);
+  opacity: 0.8;
+}

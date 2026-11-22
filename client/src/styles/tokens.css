@@ -1,0 +1,103 @@
+/*
+ * Design tokens. This is the ONLY file in the repository that may contain hex color values.
+ * Components consume the semantic tokens (surface, text, border, focus) and never the palette
+ * directly, which keeps the 60 / 30 / 10 split enforceable in one place.
+ *
+ * Breakpoints cannot be custom properties inside media queries, so they are documented here and
+ * repeated literally where used:
+ *   desktop  >= 1100px  three columns
+ *   tablet   700-1099px rail collapses to icons
+ *   mobile   < 700px    single column
+ */
+:root {
+  /* Palette: Oat (60%) */
+  --color-oat: #f2eadb;
+  --color-oat-light: #faf6ee;
+  --color-oat-dark: #dccfb8;
+
+  /* Palette: Cocoa Brown (30%) */
+  --color-cocoa: #4a2f22;
+  --color-cocoa-dark: #35211a;
+  --color-cocoa-soft: #7a5c4d;
+
+  /* Palette: Cherry Red (10%) */
+  --color-cherry: #b5232e;
+  --color-cherry-dark: #961b25;
+
+  /* Semantic: surfaces */
+  --surface-app: var(--color-oat);
+  --surface-raised: var(--color-oat-light);
+  --surface-inverse: var(--color-cocoa);
+  --surface-inverse-hover: var(--color-cocoa-dark);
+  --surface-accent: var(--color-cherry);
+  --surface-accent-hover: var(--color-cherry-dark);
+
+  /* Semantic: borders */
+  --border-default: var(--color-oat-dark);
+
+  /* Semantic: text */
+  --text-primary: var(--color-cocoa);
+  --text-muted: var(--color-cocoa-soft);
+  --text-inverse: var(--color-oat);
+  --text-inverse-muted: var(--color-oat-dark);
+  --text-on-accent: var(--color-oat-light);
+
+  /* Semantic: focus rings (cherry is reserved for key actions) */
+  --focus-default: var(--color-cocoa);
+  --focus-inverse: var(--color-oat);
+  --focus-accent: var(--color-cherry);
+
+  /* Semantic: overlays and elevation, derived from the palette */
+  --overlay: color-mix(in srgb, var(--color-cocoa-dark) 55%, transparent);
+  --shadow-popover: 0 4px 12px color-mix(in srgb, var(--color-cocoa-dark) 16%, transparent);
+
+  /* Typography: one family, four sizes */
+  --font-sans:
+    Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.25rem;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+
+  /* Spacing: 4px scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Shape */
+  --radius: 8px;
+  --radius-full: 9999px;
+
+  /* Control and avatar sizes */
+  --size-control-sm: 32px;
+  --size-control-md: 40px;
+  --size-avatar-sm: 32px;
+  --size-avatar-md: 40px;
+  --size-avatar-lg: 56px;
+  --size-presence-dot: 12px;
+
+  /* Layout */
+  --rail-width: 220px;
+  --rail-width-collapsed: 72px;
+  --list-width: 340px;
+
+  /* Motion */
+  --duration-fast: 120ms;
+  --ease: ease-out;
+
+  /* Stacking */
+  --z-popover: 20;
+  --z-dialog: 30;
+  --z-tooltip: 40;
+}

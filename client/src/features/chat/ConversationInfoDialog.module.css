@@ -1,0 +1,94 @@
+.details {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.heroActions {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.name {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.groupHeader {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.renameForm {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.renameForm > :first-child {
+  flex: 1;
+}
+
+.toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.sectionTitle {
+  margin-bottom: var(--space-2);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+}
+
+.members {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.member {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+
+.memberText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.memberName {
+  overflow: hidden;
+  font-weight: var(--weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.role {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.leave {
+  display: flex;
+  justify-content: flex-start;
+}

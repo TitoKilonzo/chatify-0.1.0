@@ -1,0 +1,40 @@
+{
+  "name": "chatify",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Chatify - real-time chat application",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "engines": {
+    "node": ">=22.9"
+  },
+  "scripts": {
+    "dev": "concurrently -n server,client \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w client",
+    "test": "npm test -w server && npm test -w client",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check:contrast": "node scripts/check-contrast.js",
+    "verify": "npm run lint && npm run format:check && npm run check:contrast && npm run check:rules && npm test && npm run build",
+    "start": "npm run start -w server",
+    "seed": "npm run seed -w server",
+    "db:migrate": "npm run db:migrate -w server",
+    "check:rules": "node scripts/check-rules.js"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "concurrently": "^10.0.7",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.14.0",
+    "prettier": "^3.10.1"
+  }
+}

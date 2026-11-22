@@ -1,0 +1,61 @@
+.iconButton {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease);
+}
+
+.iconButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.sm {
+  width: var(--size-control-sm);
+  height: var(--size-control-sm);
+}
+
+.md {
+  width: var(--size-control-md);
+  height: var(--size-control-md);
+}
+
+.ghost {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.ghost:hover:not(:disabled) {
+  background: var(--border-default);
+}
+
+.inverse {
+  background: transparent;
+  color: var(--text-inverse);
+}
+
+.inverse:hover:not(:disabled) {
+  background: var(--surface-inverse-hover);
+}
+
+.inverse:focus-visible {
+  outline-color: var(--focus-inverse);
+}
+
+.primary {
+  background: var(--surface-accent);
+  color: var(--text-on-accent);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--surface-accent-hover);
+}
+
+.primary:focus-visible {
+  outline-color: var(--focus-accent);
+}

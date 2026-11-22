@@ -1,0 +1,127 @@
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-4) 0;
+}
+
+.continued {
+  padding-top: 2px;
+}
+
+.day {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-3) 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+
+.day span {
+  padding: var(--space-1) var(--space-3);
+  background: var(--surface-app);
+  border-radius: var(--radius-full);
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.own .line {
+  flex-direction: row-reverse;
+}
+
+.menu {
+  opacity: 0;
+}
+
+.line:hover .menu,
+.line:focus-within .menu {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .menu {
+    opacity: 1;
+  }
+}
+
+.bubble {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: min(34rem, 80%);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-app);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+}
+
+.own .bubble {
+  background: var(--surface-inverse);
+  border-color: var(--surface-inverse);
+  color: var(--text-inverse);
+}
+
+.sender {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.text {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.deleted {
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  opacity: 0.85;
+}
+
+.edit {
+  display: grid;
+  gap: var(--space-2);
+  min-width: min(20rem, 60vw);
+}
+
+.editField {
+  width: 100%;
+  padding: var(--space-2);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  resize: vertical;
+}
+
+.editError {
+  font-size: var(--text-xs);
+}
+
+.editActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.failed {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+}

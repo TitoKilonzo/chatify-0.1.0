@@ -1,0 +1,171 @@
+.shell {
+  display: grid;
+  grid-template-columns: var(--rail-width) minmax(0, 1fr);
+  height: 100%;
+}
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  min-height: 0;
+  padding: var(--space-4) var(--space-3);
+  background: var(--surface-inverse);
+  color: var(--text-inverse);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.nav {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.navLink,
+.accountButton {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--size-control-md);
+  padding: 0 var(--space-3);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--text-inverse);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease);
+}
+
+.navLink:hover,
+.accountButton:hover {
+  background: var(--surface-inverse-hover);
+}
+
+.navLink:focus-visible,
+.accountButton:focus-visible {
+  outline-color: var(--focus-inverse);
+}
+
+.active {
+  background: var(--surface-inverse-hover);
+  font-weight: var(--weight-semibold);
+}
+
+.account > * {
+  width: 100%;
+}
+
+.accountButton {
+  min-height: calc(var(--size-control-md) + var(--space-2));
+  padding: var(--space-2) var(--space-3);
+}
+
+.accountText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.accountName,
+.accountHandle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountHandle {
+  color: var(--text-inverse-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-regular);
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--surface-app);
+}
+
+/* Tablet: the rail shrinks to icons. Labels stay available to screen readers. */
+@media (max-width: 1099px) {
+  .shell {
+    grid-template-columns: var(--rail-width-collapsed) minmax(0, 1fr);
+  }
+
+  .label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .brand,
+  .navLink,
+  .accountButton {
+    justify-content: center;
+    padding-right: var(--space-2);
+    padding-left: var(--space-2);
+  }
+}
+
+/* Mobile: the rail becomes a bottom bar with the account button first so its menu opens inward. */
+@media (max-width: 699px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .rail {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    order: 2;
+  }
+
+  .content {
+    order: 1;
+  }
+
+  .brand {
+    display: none;
+  }
+
+  .nav {
+    flex-direction: row;
+    justify-content: center;
+    order: 2;
+  }
+
+  .account {
+    flex: 0 0 auto;
+    order: 1;
+    width: auto;
+  }
+
+  .account > * {
+    width: auto;
+  }
+}
