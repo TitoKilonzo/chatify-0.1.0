@@ -2,3 +2,18 @@
   display: grid;
   gap: var(--space-4);
 }
+
+/* Live password requirement: icon and text carry the state, not color. */
+.rule {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: calc(var(--space-2) * -1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.rule[data-met='true'] {
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+}

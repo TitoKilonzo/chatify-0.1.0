@@ -72,3 +72,20 @@
     transform: rotate(360deg);
   }
 }
+
+/* Anchors need the underline removed and the same hover treatment as buttons. */
+.link {
+  text-decoration: none;
+}
+
+.secondary.link:hover {
+  background: var(--surface-inverse-hover);
+}
+
+.primary.link:hover {
+  background: var(--surface-accent-hover);
+}
+
+.ghost.link:hover {
+  background: var(--border-default);
+}

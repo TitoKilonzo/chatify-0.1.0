@@ -1,0 +1,43 @@
+{
+  "name": "Chatify",
+  "short_name": "Chatify",
+  "description": "Real-time direct and group messaging with file sharing.",
+  "id": "/",
+  "start_url": "/chats",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f2eadb",
+  "theme_color": "#4a2f22",
+  "orientation": "any",
+  "categories": ["social", "communication"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Chats",
+      "url": "/chats"
+    },
+    {
+      "name": "Groups",
+      "url": "/groups"
+    }
+  ]
+}

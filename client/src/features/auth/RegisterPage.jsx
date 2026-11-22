@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AtSign, Check, Circle, Lock, Mail, User } from 'lucide-react';
 import { Alert } from '../../components/ui/Alert.jsx';
 import { Button } from '../../components/ui/Button.jsx';
 import { Input } from '../../components/ui/Input.jsx';
@@ -19,6 +20,7 @@ export function RegisterPage() {
   });
   const [clientErrors, setClientErrors] = useState({});
 
+  const passwordLongEnough = values.password.length >= PASSWORD_MIN_LENGTH;
   const serverErrors = fieldErrorsFrom(register.error);
   const errors = { ...serverErrors, ...clientErrors };
   const formError =
@@ -61,6 +63,7 @@ export function RegisterPage() {
         {formError ? <Alert>{formError}</Alert> : null}
         <Input
           label="Display name"
+          leadingIcon={User}
           name="displayName"
           value={values.displayName}
           onChange={onChange}
@@ -70,6 +73,7 @@ export function RegisterPage() {
         />
         <Input
           label="Username"
+          leadingIcon={AtSign}
           name="username"
           value={values.username}
           onChange={onChange}
@@ -82,6 +86,7 @@ export function RegisterPage() {
         />
         <Input
           label="Email"
+          leadingIcon={Mail}
           name="email"
           type="email"
           value={values.email}
@@ -94,14 +99,27 @@ export function RegisterPage() {
         />
         <PasswordInput
           label="Password"
+          leadingIcon={Lock}
           name="password"
           value={values.password}
           onChange={onChange}
           error={errors.password}
-          hint={`At least ${PASSWORD_MIN_LENGTH} characters`}
           autoComplete="new-password"
           required
         />
+        <p className={styles.rule} data-met={passwordLongEnough}>
+          {passwordLongEnough ? (
+            <Check size={16} aria-hidden="true" />
+          ) : (
+            <Circle size={16} aria-hidden="true" />
+          )}
+          <span>
+            At least {PASSWORD_MIN_LENGTH} characters
+            <span className="visually-hidden">
+              {passwordLongEnough ? ' (met)' : ' (not met yet)'}
+            </span>
+          </span>
+        </p>
         <Button type="submit" variant="primary" loading={register.isPending}>
           Create account
         </Button>

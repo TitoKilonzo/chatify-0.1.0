@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Lock, User } from 'lucide-react';
 import { Alert } from '../../components/ui/Alert.jsx';
 import { Button } from '../../components/ui/Button.jsx';
 import { Input } from '../../components/ui/Input.jsx';
@@ -52,6 +53,7 @@ export function LoginPage() {
         {formError ? <Alert>{formError}</Alert> : null}
         <Input
           label="Email or username"
+          leadingIcon={User}
           name="identifier"
           value={values.identifier}
           onChange={onChange}
@@ -63,6 +65,7 @@ export function LoginPage() {
         />
         <PasswordInput
           label="Password"
+          leadingIcon={Lock}
           name="password"
           value={values.password}
           onChange={onChange}

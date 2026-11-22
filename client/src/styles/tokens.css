@@ -32,6 +32,10 @@
   --surface-accent: var(--color-cherry);
   --surface-accent-hover: var(--color-cherry-dark);
 
+  /* Semantic: decorative 3D scene on the sign-in and sign-up pages */
+  --surface-scene-plate: var(--color-cocoa-dark);
+  --surface-scene-edge: var(--color-cocoa-soft);
+
   /* Semantic: borders */
   --border-default: var(--color-oat-dark);
 
@@ -58,6 +62,9 @@
   --text-sm: 0.875rem;
   --text-md: 1rem;
   --text-lg: 1.25rem;
+  /* Marketing pages only: section and hero headings */
+  --text-xl: 1.75rem;
+  --text-display: clamp(2rem, 5.5vw, 3.25rem);
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
@@ -91,6 +98,8 @@
   --rail-width: 220px;
   --rail-width-collapsed: 72px;
   --list-width: 340px;
+  --content-width: 72rem;
+  --header-height: 64px;
 
   /* Motion */
   --duration-fast: 120ms;

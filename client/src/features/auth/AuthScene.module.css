@@ -1,0 +1,189 @@
+.scene {
+  display: grid;
+  place-items: center;
+  height: 28rem;
+  perspective: 1400px;
+}
+
+.stage {
+  position: relative;
+  width: 21rem;
+  height: 23rem;
+  transform-style: preserve-3d;
+  transform: rotateX(calc(16deg + var(--tilt-y, 0) * -14deg))
+    rotateY(calc(-28deg + var(--tilt-x, 0) * 24deg));
+  transition: transform 250ms var(--ease);
+}
+
+.plate {
+  position: absolute;
+  inset: 0;
+  background: var(--surface-scene-plate);
+  border: 2px solid var(--surface-scene-edge);
+  border-radius: var(--space-6);
+  transform: translateZ(-30px);
+}
+
+/* Floating pieces. Each has a flat offset "shadow" layer beneath it for depth. */
+.layer {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--space-4);
+  transform-style: preserve-3d;
+  animation: float 5s ease-in-out infinite;
+}
+
+.layer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: color-mix(in srgb, var(--surface-scene-plate) 70%, transparent);
+  border-radius: inherit;
+  transform: translateZ(-16px) translate(12px, 12px);
+}
+
+.incoming {
+  --z: 40px;
+  top: 6%;
+  left: -6%;
+  width: 78%;
+  background: var(--surface-raised);
+}
+
+.outgoing {
+  --z: 80px;
+  top: 30%;
+  right: -8%;
+  width: 78%;
+  justify-content: space-between;
+  background: var(--border-default);
+  animation-delay: -1.2s;
+}
+
+.attachment {
+  --z: 120px;
+  top: 56%;
+  left: 2%;
+  width: 70%;
+  background: var(--surface-raised);
+  animation-delay: -2.4s;
+}
+
+.typing {
+  --z: 70px;
+  bottom: 5%;
+  right: 4%;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-raised);
+  border-radius: var(--radius-full);
+  animation-delay: -3.4s;
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateZ(var(--z));
+  }
+  50% {
+    transform: translateZ(calc(var(--z) + 16px));
+  }
+}
+
+.avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--size-avatar-md);
+  height: var(--size-avatar-md);
+  background: var(--surface-inverse);
+  color: var(--text-inverse);
+  border-radius: var(--radius-full);
+}
+
+/* Online indicator: one of the few places Cherry Red is allowed. */
+.online {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 10px;
+  height: 10px;
+  background: var(--surface-accent);
+  border: 2px solid var(--surface-raised);
+  border-radius: var(--radius-full);
+}
+
+.lines {
+  display: grid;
+  gap: var(--space-2);
+  flex: 1;
+}
+
+.bar {
+  display: block;
+  height: 8px;
+  background: var(--border-default);
+  border-radius: var(--radius-full);
+}
+
+.outgoing .bar {
+  background: var(--surface-inverse);
+}
+
+.short {
+  width: 55%;
+}
+
+.medium {
+  width: 75%;
+}
+
+.ticks {
+  flex: none;
+  color: var(--text-primary);
+}
+
+.chipIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--size-avatar-md);
+  height: var(--size-avatar-md);
+  background: var(--surface-inverse);
+  color: var(--text-inverse);
+  border-radius: var(--radius);
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  background: var(--text-muted);
+  border-radius: var(--radius-full);
+  animation: bounce 1.2s ease-in-out infinite;
+}
+
+.dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes bounce {
+  0%,
+  60%,
+  100% {
+    opacity: 0.4;
+  }
+  30% {
+    opacity: 1;
+  }
+}

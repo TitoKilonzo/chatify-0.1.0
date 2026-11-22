@@ -25,6 +25,7 @@ optional development seed command.
 10. [Testing](#testing)
 11. [Production deployment](#production-deployment)
 12. [Known limits](#known-limits)
+13. [Public site and installable app](#public-site-and-installable-app)
 
 ## Quick start
 
@@ -57,6 +58,7 @@ Run from the repository root.
 | `npm start`              | Start the server (serves `client/dist` when `CLIENT_DIST_DIR` is set)                 |
 | `npm run db:migrate`     | Apply pending database migrations. Never run automatically at boot                    |
 | `npm run seed`           | Development sample data                                                               |
+| `npm run icons`          | Regenerate favicon and app icons from the palette tokens                              |
 | `npm test`               | Server tests then client tests                                                        |
 | `npm run lint`           | ESLint (includes jsx-a11y and react-hooks rules)                                      |
 | `npm run format:check`   | Prettier check (`npm run format` writes)                                              |
@@ -355,3 +357,27 @@ Run migrations as a separate deploy step, not from every instance at boot.
 - Uploaded files use local disk. For multiple instances or ephemeral hosts, implement the
   `StorageDriver` interface for S3-compatible storage.
 - There are no push notifications, end-to-end encryption, message search or threaded replies.
+
+## Public site and installable app
+
+Visitors can use these pages before signing in: Home (`/`), Features, About, Help, Contact, Privacy
+and Terms. The header has dropdown menus for Features and Help, the footer repeats the links, and
+the sign-in and sign-up pages have a Back to home button. Contact details live in one place,
+`client/src/features/public/site.js`.
+
+The Contact form has no server endpoint: it opens the visitor's own email app with the message
+addressed to the public email, so nothing is stored by Chatify.
+
+Chatify is a Progressive Web App:
+
+- `client/public/manifest.webmanifest` describes the app. A client test checks that its colors
+  match the design tokens.
+- `client/public/sw.js` is a deliberately small service worker. It shows an offline page when a
+  navigation fails and never caches API responses, sockets or uploads. It is registered in
+  production builds only, and the server serves it with `Cache-Control: no-cache`.
+- The Install app button (public header, footer, Home, Help and Settings; deliberately not on sign-in or sign-up) uses the browser's
+  native prompt where available and otherwise shows steps for the visitor's device.
+- Favicon and app icons are generated from the palette tokens with `npm run icons`. Run it only
+  when the palette or mark changes; the output in `client/public` is committed.
+
+Browsers only offer installation over HTTPS (or on localhost), so serve production behind TLS.

@@ -25,7 +25,7 @@ export default [
   {
     files: [
       'server/**/*.js',
-      'scripts/**/*.js',
+      'scripts/**/*.{js,mjs}',
       'e2e/**/*.mjs',
       'eslint.config.js',
       'client/vite.config.js',
@@ -55,8 +55,13 @@ export default [
     },
   },
   {
+    // The service worker runs in a worker scope, not a window.
+    files: ['client/public/sw.js'],
+    languageOptions: { globals: globals.serviceworker },
+  },
+  {
     // Command-line tools print their results.
-    files: ['scripts/**/*.js', 'e2e/**/*.mjs', 'server/src/db/seed-cli.js'],
+    files: ['scripts/**/*.{js,mjs}', 'e2e/**/*.mjs', 'server/src/db/seed-cli.js'],
     rules: { 'no-console': 'off' },
   },
   prettier,

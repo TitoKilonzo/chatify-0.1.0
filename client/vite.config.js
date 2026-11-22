@@ -17,5 +17,9 @@ export default defineConfig({
   },
   build: {
     sourcemap: true,
+    rollupOptions: {
+      // offline.html is a second entry: the service worker serves it when a navigation fails.
+      input: { main: 'index.html', offline: 'offline.html' },
+    },
   },
 });

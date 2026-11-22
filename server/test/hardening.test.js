@@ -46,6 +46,9 @@ describe('single-origin static serving', () => {
     await mkdir(path.join(dist, 'assets'));
     await writeFile(path.join(dist, 'index.html'), '<!doctype html><div id="root"></div>');
     await writeFile(path.join(dist, 'assets', 'app-abc.js'), 'void 0;');
+    await writeFile(path.join(dist, 'sw.js'), 'void 0;');
+    await writeFile(path.join(dist, 'manifest.webmanifest'), '{"name":"Chatify"}');
+    await writeFile(path.join(dist, 'robots.txt'), 'User-agent: *\n');
     ctx = await createTestApp({ CLIENT_DIST_DIR: dist });
   });
   afterAll(async () => {
@@ -64,6 +67,30 @@ describe('single-origin static serving', () => {
     const res = await request(ctx.app).get('/assets/app-abc.js');
     expect(res.status).toBe(200);
     expect(res.headers['cache-control']).toContain('immutable');
+  });
+
+  it('serves the service worker uncached and from the site root', async () => {
+    const res = await request(ctx.app).get('/sw.js');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/javascript/);
+    expect(res.headers['cache-control']).toBe('no-cache');
+  });
+
+  it('serves the web app manifest with its own media type', async () => {
+    const res = await request(ctx.app).get('/manifest.webmanifest');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/manifest\+json/);
+  });
+
+  it('serves public pages and static files without a session', async () => {
+    for (const route of ['/', '/about', '/features', '/help', '/contact', '/privacy', '/terms']) {
+      const res = await request(ctx.app).get(route);
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toMatch(/html/);
+    }
+    const robots = await request(ctx.app).get('/robots.txt');
+    expect(robots.status).toBe(200);
+    expect(robots.headers['content-type']).toMatch(/text\/plain/);
   });
 
   it('keeps API and socket paths out of the SPA fallback', async () => {

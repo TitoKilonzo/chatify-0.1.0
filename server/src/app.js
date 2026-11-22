@@ -195,6 +195,9 @@ function mountClient(app, distDir) {
       setHeaders(res, filePath) {
         if (filePath.includes(`${path.sep}assets${path.sep}`)) {
           res.set('Cache-Control', ASSET_CACHE);
+        } else if (path.basename(filePath) === 'sw.js') {
+          // The service worker must be re-checked on every load or updates would never arrive.
+          res.set('Cache-Control', 'no-cache');
         }
       },
     }),
