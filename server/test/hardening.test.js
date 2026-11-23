@@ -93,6 +93,16 @@ describe('single-origin static serving', () => {
     expect(robots.headers['content-type']).toMatch(/text\/plain/);
   });
 
+  it('answers 404, not the app shell, for missing files and stale assets', async () => {
+    for (const missing of ['/assets/app-old123.js', '/assets/missing.css', '/logo.png', '/x.map']) {
+      const res = await request(ctx.app).get(missing);
+      expect(res.status).toBe(404);
+      expect(res.headers['content-type']).not.toMatch(/html/);
+    }
+    // Extensionless client routes still get the shell, including ones with a dot-free path.
+    expect((await request(ctx.app).get('/chats/abc')).status).toBe(200);
+  });
+
   it('keeps API and socket paths out of the SPA fallback', async () => {
     const api = await request(ctx.app).get('/api/nope');
     expect(api.status).toBe(404);

@@ -14,7 +14,7 @@ import { testEnv } from './test-env.js';
 const CHEAP_HASH_OPTIONS = { memoryCost: 1024, timeCost: 1, parallelism: 1 };
 
 /** Build an isolated app with its own migrated database. Call cleanup() in afterAll. */
-export async function createTestApp(envOverrides = {}) {
+export async function createTestApp(envOverrides = {}, { storage } = {}) {
   const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'chatify-uploads-'));
   const env = testEnv({ UPLOAD_DIR: uploadDir, ...envOverrides });
   const database = await createTestDatabase();
@@ -24,6 +24,7 @@ export async function createTestApp(envOverrides = {}) {
     logger,
     database,
     passwordHashOptions: CHEAP_HASH_OPTIONS,
+    storage,
   });
   return {
     app,

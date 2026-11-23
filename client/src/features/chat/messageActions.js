@@ -1,6 +1,7 @@
 import { ApiError, api } from '../../lib/api.js';
 import { applyIncomingMessage } from '../../lib/conversation-cache.js';
 import { createPending } from '../../lib/message-cache.js';
+import { addToOutbox, isPermanentFailure, loadOutbox, removeFromOutbox } from '../../lib/outbox.js';
 import { queryClient } from '../../lib/queryClient.js';
 import { getSocket } from '../../lib/socket.js';
 import { useMessageStore } from '../../stores/messageStore.js';
@@ -57,9 +58,19 @@ export async function loadOlder(conversationId) {
  * Send over the socket when connected, otherwise (or if the ack never arrives) over HTTP. Both
  * carry the same clientId, so a retry after a lost acknowledgement cannot create a duplicate.
  */
-async function transmit(pending) {
+const inflight = new Set();
+
+/**
+ * tracked is false for messages restored from the outbox into a conversation that is not open:
+ * they have no pending bubble to mark as failed and simply stay in the outbox for the next try.
+ */
+async function transmit(pending, { tracked = true } = {}) {
   const { conversationId, clientId, body, attachment } = pending;
   const payload = { clientId, body, attachmentId: attachment?.id };
+  if (inflight.has(clientId)) {
+    return;
+  }
+  inflight.add(clientId);
 
   try {
     let result = null;
@@ -81,11 +92,20 @@ async function transmit(pending) {
       throw new ApiError({ status: 400, ...result.error });
     }
     store().upsert(result.message);
+    removeFromOutbox(pending.senderId, clientId);
     patchConversationList((list) =>
       applyIncomingMessage(list, result.message, { meId: pending.senderId, isViewing: true }),
     );
-  } catch {
-    store().setPendingFailed(conversationId, clientId, true);
+  } catch (error) {
+    if (tracked) {
+      store().setPendingFailed(conversationId, clientId, true);
+    }
+    if (isPermanentFailure(error)) {
+      // Retrying cannot succeed (for example the user left the group); do not resend forever.
+      removeFromOutbox(pending.senderId, clientId);
+    }
+  } finally {
+    inflight.delete(clientId);
   }
 }
 
@@ -93,12 +113,44 @@ export async function sendMessage({ conversationId, senderId, body, attachment =
   const clientId = crypto.randomUUID();
   const pending = createPending({ clientId, conversationId, senderId, body, attachment });
   store().addPending(pending);
+  // Written before the first attempt so a reload or closed tab cannot lose the message.
+  addToOutbox(senderId, { clientId, conversationId, body, attachment });
   await transmit(pending);
 }
 
 export async function retryMessage(message) {
   store().setPendingFailed(message.conversationId, message.clientId, false);
+  addToOutbox(message.senderId, message);
   await transmit(message);
+}
+
+function isInStore(clientId) {
+  return Object.values(store().byConversation).some((conversation) =>
+    conversation.messages.some((message) => message.clientId === clientId),
+  );
+}
+
+/**
+ * Send what is waiting in the outbox. Entries that still have a bubble on screen are handled by
+ * retryAllFailed; the rest (left over from a reload or a closed tab) are sent directly, and
+ * appear in their conversation through the normal sync when it is opened.
+ */
+export function flushOutbox(userId) {
+  for (const entry of loadOutbox(userId)) {
+    if (inflight.has(entry.clientId) || isInStore(entry.clientId)) {
+      continue;
+    }
+    transmit(
+      createPending({
+        clientId: entry.clientId,
+        conversationId: entry.conversationId,
+        senderId: userId,
+        body: entry.body,
+        attachment: entry.attachment,
+      }),
+      { tracked: false },
+    );
+  }
 }
 
 /** After a reconnect, resend anything that failed while offline. Safe: sends are idempotent. */
@@ -113,6 +165,7 @@ export function retryAllFailed() {
 }
 
 export function discardFailed(message) {
+  removeFromOutbox(message.senderId, message.clientId);
   store().removePending(message.conversationId, message.clientId);
 }
 

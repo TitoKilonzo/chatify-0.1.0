@@ -365,6 +365,44 @@ the web app from a single origin.
 - Uploaded files are stored on local disk. On a service without a persistent disk they are lost at
   each deploy or restart; attach a Render disk and point `UPLOAD_DIR` at it to keep them.
 
+### Durable file storage with Cloudflare R2
+
+On hosts without a persistent disk, local uploads disappear at every deploy. Use R2:
+
+1. In the Cloudflare dashboard open R2, create a bucket (keep it private) and note the account id.
+2. Create an R2 API token with Object Read and Write for that bucket. Copy the access key id and
+   secret.
+3. Set these variables on the server: `STORAGE_DRIVER=r2`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
+   `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`. Optionally `SIGNED_URL_TTL_SECONDS` (default 300).
+4. Redeploy. New uploads go to R2. Files already on local disk are not moved.
+
+How it works: the server still authenticates every request and checks conversation membership, then
+answers with a redirect to a short-lived signed URL, so file bytes go straight from R2 to the
+browser. The signature fixes the content type and disposition, files are never HTML or SVG, and the
+bucket is on another origin, so a file cannot run inside the app. The Content Security Policy allows
+images and media from the R2 origin only. Redirects are cached for a little under half the URL
+lifetime so thumbnails are not downloaded again on every scroll.
+
+### Keeping a free instance awake
+
+Set `KEEP_ALIVE_URL` to the service's public URL and the server will request its own
+`/api/health` every 10 minutes. This is a stop-gap; a paid instance is the reliable fix, and an
+external monitor (for example UptimeRobot on `/api/health`) works as well.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs `npm run verify` and a production dependency audit on every push and
+pull request, then the two-browser smoke test against a freshly built app.
+
+## Offline sending
+
+Messages written while offline are saved in the browser (`localStorage`, per user) before the first
+send attempt, shown as not yet sent, and delivered automatically when the connection returns, also
+after a reload or a closed tab. Sends are idempotent, so a message that actually arrived is never
+duplicated. Messages the server rejects for good (for example after being removed from a group) are
+dropped from the queue. The queue is cleared on explicit sign-out. Attachments need a connection to
+upload, so only text and already uploaded files are queued.
+
 ## Known limits
 
 - Realtime state (connected sockets, presence, typing) lives in process memory, so run a single

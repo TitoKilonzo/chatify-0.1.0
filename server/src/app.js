@@ -1,6 +1,7 @@
 import path from 'node:path';
 import express from 'express';
 import helmet from 'helmet';
+import { storageOrigin } from './storage/index.js';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { createContainer } from './container.js';
@@ -39,6 +40,9 @@ const ASSET_CACHE = 'public, max-age=31536000, immutable';
 
 /** Content-Security-Policy that lets the SPA talk to its API and websocket and nothing else. */
 function contentSecurityPolicy(env) {
+  // With cloud storage, images and media are loaded from short-lived signed URLs on its origin.
+  const cloud = storageOrigin(env);
+  const cloudSources = cloud ? [cloud] : [];
   const sockets = env.CORS_ORIGINS.map((origin) => origin.replace(/^http/, 'ws'));
   return {
     useDefaults: false,
@@ -47,10 +51,10 @@ function contentSecurityPolicy(env) {
       scriptSrc: ["'self'"],
       // React sets inline style attributes for virtualized lists, so inline styles are allowed.
       styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:', 'blob:'],
+      imgSrc: ["'self'", 'data:', 'blob:', ...cloudSources],
       fontSrc: ["'self'", 'data:'],
       connectSrc: ["'self'", ...env.CORS_ORIGINS, ...sockets],
-      mediaSrc: ["'self'", 'blob:'],
+      mediaSrc: ["'self'", 'blob:', ...cloudSources],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
       formAction: ["'self'"],
@@ -64,9 +68,15 @@ function contentSecurityPolicy(env) {
  * passwordHashOptions lets tests use cheap argon2 parameters. The composed container is exposed
  * on app.locals.container so the realtime layer shares the same services and event bus.
  */
-export function createApp({ env, logger, database, passwordHashOptions }) {
+export function createApp({ env, logger, database, passwordHashOptions, storage }) {
   const app = express();
-  const container = createContainer({ env, logger, database, passwordHashOptions });
+  const container = createContainer({
+    env,
+    logger,
+    database,
+    passwordHashOptions,
+    storageOverride: storage,
+  });
   app.locals.container = container;
 
   app.set('trust proxy', env.TRUST_PROXY);
@@ -205,6 +215,12 @@ function mountClient(app, distDir) {
   app.use((req, res, next) => {
     const isPage = req.method === 'GET' || req.method === 'HEAD';
     if (!isPage || req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
+      next();
+      return;
+    }
+    // A missing file (a hashed asset from an older deploy, a stray .map or .png) must be a real
+    // 404. Answering with index.html would make browsers try to run HTML as JavaScript.
+    if (req.path.startsWith('/assets/') || path.extname(req.path) !== '') {
       next();
       return;
     }

@@ -1,4 +1,3 @@
-import path from 'node:path';
 import { createAuthService } from './modules/auth/auth.service.js';
 import { createSessionCookies } from './modules/auth/cookies.js';
 import { createPasswordHasher } from './modules/auth/password.js';
@@ -12,7 +11,7 @@ import { createMessagesRepository } from './modules/messages/messages.repository
 import { createMessagesService } from './modules/messages/messages.service.js';
 import { createUsersRepository } from './modules/users/users.repository.js';
 import { createUsersService } from './modules/users/users.service.js';
-import { createLocalStorage } from './storage/local-storage.js';
+import { createStorage } from './storage/index.js';
 import { createEventBus } from './utils/events.js';
 
 /**
@@ -20,7 +19,7 @@ import { createEventBus } from './utils/events.js';
  * Both the HTTP app and the realtime layer receive the same container, so they share one event
  * bus and one set of business rules.
  */
-export function createContainer({ env, logger, database, passwordHashOptions }) {
+export function createContainer({ env, logger, database, passwordHashOptions, storageOverride }) {
   const { db } = database;
   const events = createEventBus({
     onError: (err, event) => logger.error({ err, event }, 'event handler failed'),
@@ -35,7 +34,7 @@ export function createContainer({ env, logger, database, passwordHashOptions }) 
     accessTtlSeconds: env.ACCESS_TOKEN_TTL_SECONDS,
     refreshTtlSeconds: env.REFRESH_TOKEN_TTL_SECONDS,
   });
-  const storage = createLocalStorage({ baseDir: path.resolve(env.UPLOAD_DIR) });
+  const storage = storageOverride ?? createStorage(env);
 
   const usersRepository = createUsersRepository(db);
   const refreshTokensRepository = createRefreshTokensRepository(db);

@@ -49,9 +49,9 @@ export function createAttachmentsService({
       }
 
       const { key, thumbnailKey } = newStorageKey();
-      await storage.put(key, file.buffer);
+      await storage.put(key, file.buffer, { contentType: mimeType });
       if (thumbnail) {
-        await storage.put(thumbnailKey, thumbnail);
+        await storage.put(thumbnailKey, thumbnail, { contentType: 'image/webp' });
       }
       try {
         const row = await attachmentsRepository.create({
@@ -89,16 +89,26 @@ export function createAttachmentsService({
       if (!key) {
         throw notFound('File not found');
       }
+      const meta = {
+        name: attachment.originalName,
+        mimeType: thumbnail ? 'image/webp' : attachment.mimeType,
+        inline: thumbnail || IMAGE_MIME.has(attachment.mimeType),
+      };
+      // Cloud storage: membership was checked above, so hand out a short-lived signed URL and let
+      // the browser fetch the bytes directly.
+      const url = await storage.signedUrl(key, {
+        filename: meta.name,
+        contentType: meta.mimeType,
+        inline: meta.inline,
+      });
+      if (url) {
+        return { ...meta, url, redirectCacheSeconds: storage.redirectCacheSeconds };
+      }
       const stored = await storage.get(key);
       if (!stored) {
         throw notFound('File not found');
       }
-      return {
-        ...stored,
-        name: attachment.originalName,
-        mimeType: thumbnail ? 'image/webp' : attachment.mimeType,
-        inline: IMAGE_MIME.has(attachment.mimeType),
-      };
+      return { ...stored, ...meta };
     },
 
     /** Delete an attachment row and its files. Idempotent. */
@@ -143,7 +153,7 @@ export function createAttachmentsService({
       }
       const processed = await processAvatar(file.buffer);
       const { key } = newStorageKey();
-      await storage.put(key, processed);
+      await storage.put(key, processed, { contentType: 'image/webp' });
       return key;
     },
 
@@ -210,6 +220,10 @@ export function createAttachmentsService({
   async function openAvatar(key) {
     if (!key) {
       throw notFound('No avatar');
+    }
+    const url = await storage.signedUrl(key, { contentType: 'image/webp', inline: true });
+    if (url) {
+      return { mimeType: 'image/webp', url, redirectCacheSeconds: storage.redirectCacheSeconds };
     }
     const stored = await storage.get(key);
     if (!stored) {

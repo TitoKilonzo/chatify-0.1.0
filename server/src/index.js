@@ -4,6 +4,7 @@ import { createLogger } from './utils/logger.js';
 import { createDatabase } from './db/client.js';
 import { createApp } from './app.js';
 import { attachRealtime } from './realtime/index.js';
+import { startKeepAlive } from './utils/keep-alive.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -37,6 +38,16 @@ const cleanupTimer = setInterval(cleanupOrphans, CLEANUP_INTERVAL_MS);
 cleanupTimer.unref();
 setTimeout(cleanupOrphans, 30_000).unref();
 
+if (env.isProduction && env.STORAGE_DRIVER === 'local') {
+  logger.warn(
+    'uploads are stored on local disk: on most hosts they are lost at every deploy. ' +
+      'Set STORAGE_DRIVER=r2 (see README) or mount a persistent disk at UPLOAD_DIR',
+  );
+}
+const stopKeepAlive = env.KEEP_ALIVE_URL
+  ? startKeepAlive({ url: env.KEEP_ALIVE_URL, logger })
+  : () => {};
+
 let shuttingDown = false;
 
 /**
@@ -57,6 +68,7 @@ function shutdown(reason, exitCode = 0) {
   forceExit.unref();
 
   clearInterval(cleanupTimer);
+  stopKeepAlive();
   // Closing Socket.io also closes the HTTP server it is attached to.
   realtime
     .close()

@@ -16,7 +16,9 @@ export default defineConfig({
     },
   },
   build: {
-    sourcemap: true,
+    // Source maps are not published: they roughly double the size of what is deployed and expose
+    // the original source to anyone. Turn on locally with `vite build --sourcemap` when debugging.
+    sourcemap: false,
     rollupOptions: {
       // offline.html is a second entry: the service worker serves it when a navigation fails.
       input: { main: 'index.html', offline: 'offline.html' },

@@ -37,6 +37,25 @@ const envSchema = z
     LOGIN_LOCKOUT_MINUTES: z.coerce.number().int().min(1).default(15),
     AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(30),
     TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(0),
+    STORAGE_DRIVER: z.enum(['local', 'r2']).default('local'),
+    // Cloudflare R2 (required when STORAGE_DRIVER=r2)
+    R2_ACCOUNT_ID: z.string().optional(),
+    R2_ACCESS_KEY_ID: z.string().optional(),
+    R2_SECRET_ACCESS_KEY: z.string().optional(),
+    R2_BUCKET: z.string().optional(),
+    R2_ENDPOINT: z
+      .string()
+      .optional()
+      .transform((value) => value || undefined)
+      .pipe(z.url().optional()),
+    SIGNED_URL_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(300),
+    // Optional public URL of this service (for example https://chatify.onrender.com). When set,
+    // the server pings its own health endpoint every 10 minutes so a free instance stays awake.
+    KEEP_ALIVE_URL: z
+      .string()
+      .optional()
+      .transform((value) => value || undefined)
+      .pipe(z.url().optional()),
     UPLOAD_DIR: z.string().min(1).default('./data/uploads'),
     MAX_UPLOAD_BYTES: z.coerce.number().int().min(1024).default(26214400),
     CLIENT_DIST_DIR: z
@@ -52,6 +71,24 @@ const envSchema = z
         path: ['DATABASE_AUTH_TOKEN'],
         message: 'is required when DATABASE_URL points at a remote Turso database',
       });
+    }
+    if (value.STORAGE_DRIVER === 'r2') {
+      for (const name of ['R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET']) {
+        if (!value[name]) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [name],
+            message: 'is required when STORAGE_DRIVER=r2',
+          });
+        }
+      }
+      if (!value.R2_ENDPOINT && !value.R2_ACCOUNT_ID) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['R2_ACCOUNT_ID'],
+          message: 'is required when STORAGE_DRIVER=r2 and R2_ENDPOINT is not set',
+        });
+      }
     }
     if (value.NODE_ENV === 'production' && isLocalFile) {
       ctx.addIssue({

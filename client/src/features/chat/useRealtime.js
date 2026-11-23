@@ -13,6 +13,7 @@ import {
 import { sessionKey } from '../auth/useSession.js';
 import {
   catchUp,
+  flushOutbox,
   loadLatest,
   markRead,
   patchConversationList,
@@ -78,6 +79,7 @@ export function useRealtime(meId) {
         loadLatest(open);
       }
       retryAllFailed();
+      flushOutbox(meId);
     }
 
     socket.on('connect', () => {
@@ -88,6 +90,8 @@ export function useRealtime(meId) {
       } else {
         everConnected = true;
         queryClient.invalidateQueries({ queryKey: conversationsKey });
+        // Messages left over from a previous visit (offline, closed tab) go out now.
+        flushOutbox(meId);
       }
     });
 
@@ -177,10 +181,20 @@ export function useRealtime(meId) {
       }
     });
 
+    // The browser knows the network is back before socket.io's own retry fires.
+    function handleOnline() {
+      if (socket.connected) {
+        retryAllFailed();
+        flushOutbox(meId);
+      }
+    }
+    window.addEventListener('online', handleOnline);
+
     setStatus('connecting');
     socket.connect();
 
     return () => {
+      window.removeEventListener('online', handleOnline);
       stopped = true;
       clearTimeout(retryTimer);
       closeSocket();

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api, setSessionExpiredHandler } from '../../lib/api.js';
+import { clearOutbox } from '../../lib/outbox.js';
 import { useDraftStore } from '../../stores/liveStores.js';
 
 export const sessionKey = ['session'];
@@ -64,6 +65,11 @@ export function useLogout() {
     mutationFn: () => api.post('/auth/logout'),
     // Sign out locally even if the request failed: the user's intent is clear, and the server
     // session expires on its own.
-    onSettled: () => clearSession(queryClient),
+    onSettled: () => {
+      // Unsent messages are removed on an explicit sign-out so they do not linger on a shared
+      // device. A session that merely expires keeps them for the next sign-in.
+      clearOutbox(queryClient.getQueryData(sessionKey)?.id);
+      clearSession(queryClient);
+    },
   });
 }

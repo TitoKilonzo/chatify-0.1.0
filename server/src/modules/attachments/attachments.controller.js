@@ -5,6 +5,16 @@ const FILE_CSP = "default-src 'none'; sandbox";
 
 /** Stream a stored file with headers that make browsers treat it as inert data. */
 async function sendFile(res, file, { cacheSeconds }) {
+  if (file.url) {
+    // Cloud storage: the caller is already authorized. The response type and disposition are part
+    // of the signature, and the bucket lives on another origin, so a file cannot run in this app.
+    res.set({
+      'Cache-Control': `private, max-age=${file.redirectCacheSeconds}`,
+      'Referrer-Policy': 'no-referrer',
+    });
+    res.redirect(302, file.url);
+    return;
+  }
   res.set({
     'Content-Length': String(file.size),
     'X-Content-Type-Options': 'nosniff',

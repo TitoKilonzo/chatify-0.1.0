@@ -32,3 +32,8 @@ services:
         sync: false
       - key: JWT_ACCESS_SECRET
         generateValue: true
+      # Durable uploads. Without these, files are stored on local disk and lost at each deploy.
+      # To switch to Cloudflare R2, change this to r2 and add R2_ACCOUNT_ID, R2_ACCESS_KEY_ID,
+      # R2_SECRET_ACCESS_KEY and R2_BUCKET in the dashboard (see the README).
+      - key: STORAGE_DRIVER
+        value: local
