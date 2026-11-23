@@ -1,0 +1,34 @@
+# Render Blueprint: one web service that serves the API, the realtime socket and the built client
+# from a single origin, which is what the app is designed for (cookies stay first-party).
+# Secrets marked sync: false are entered in the Render dashboard and never stored in git.
+services:
+  - type: web
+    name: chatify
+    runtime: node
+    plan: free
+    # Migrations run once per deploy at build time, never from every instance at boot.
+    buildCommand: npm ci && npm run build && npm run db:migrate
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      # Render terminates TLS in front of the service: one proxy.
+      - key: TRUST_PROXY
+        value: 1
+      # Relative to the server workspace, which is the working directory of npm start.
+      - key: CLIENT_DIST_DIR
+        value: ../client/dist
+      # Public origin of this service, for example https://chatify.onrender.com (no trailing path).
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_AUTH_TOKEN
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        generateValue: true

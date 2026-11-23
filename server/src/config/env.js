@@ -10,7 +10,9 @@ const corsOrigins = z
   .transform((value) =>
     value
       .split(',')
-      .map((item) => item.trim())
+      // A trailing slash is the most common copy-paste slip (browsers show URLs with one), and an
+      // origin never has one, so it is removed instead of failing the deploy.
+      .map((item) => item.trim().replace(/\/+$/, ''))
       .filter(Boolean),
   )
   .pipe(z.array(origin).min(1));

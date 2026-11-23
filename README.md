@@ -349,6 +349,22 @@ and the mobile layout.
 
 Run migrations as a separate deploy step, not from every instance at boot.
 
+### Deploying on Render
+
+`render.yaml` in the repository root is a Render Blueprint. It builds the client, applies the
+migrations to Turso during the build, and starts one service that serves the API, the websocket and
+the web app from a single origin.
+
+- Do not set `PORT`; Render provides it.
+- Set `CORS_ORIGINS` to the service's public origin, for example `https://chatify.onrender.com`.
+  A trailing slash is tolerated, but a path is not.
+- Keep `NODE_ENV=production`, `TRUST_PROXY=1` and `CLIENT_DIST_DIR=../client/dist`.
+- Host the client on the same service rather than on a separate site. The browser app talks to
+  relative `/api` and `/socket.io` URLs and uses first-party cookies, so a second domain for the
+  client would need proxying that cannot carry websockets or large uploads.
+- Uploaded files are stored on local disk. On a service without a persistent disk they are lost at
+  each deploy or restart; attach a Render disk and point `UPLOAD_DIR` at it to keep them.
+
 ## Known limits
 
 - Realtime state (connected sockets, presence, typing) lives in process memory, so run a single

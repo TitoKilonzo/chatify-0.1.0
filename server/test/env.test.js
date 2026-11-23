@@ -64,10 +64,7 @@ describe('parseEnv', () => {
     expect(env.CORS_ORIGINS).toEqual(['https://a.example.com', 'https://b.example.com:8443']);
   });
 
-  it('rejects origins that carry a path or trailing slash', () => {
-    expect(() => parseEnv({ ...BASE, CORS_ORIGINS: 'https://a.example.com/' })).toThrow(
-      /CORS_ORIGINS/,
-    );
+  it('rejects origins that carry a path', () => {
     expect(() => parseEnv({ ...BASE, CORS_ORIGINS: 'https://a.example.com/app' })).toThrow(
       /CORS_ORIGINS/,
     );
@@ -83,6 +80,20 @@ describe('parseEnv', () => {
   it('reports every invalid variable in one error', () => {
     expect(() => parseEnv({ ...BASE, PORT: '99999', LOG_LEVEL: 'loud' })).toThrow(
       /PORT[\s\S]*LOG_LEVEL|LOG_LEVEL[\s\S]*PORT/,
+    );
+  });
+
+  it('accepts origins copied with a trailing slash and normalizes them', () => {
+    const env = parseEnv({
+      ...BASE,
+      CORS_ORIGINS: 'https://app.example.com/, https://other.example.com',
+    });
+    expect(env.CORS_ORIGINS).toEqual(['https://app.example.com', 'https://other.example.com']);
+  });
+
+  it('still rejects origins that carry a path', () => {
+    expect(() => parseEnv({ ...BASE, CORS_ORIGINS: 'https://app.example.com/chat' })).toThrow(
+      /CORS_ORIGINS/,
     );
   });
 });
