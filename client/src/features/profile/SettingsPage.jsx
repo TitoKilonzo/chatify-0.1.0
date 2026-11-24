@@ -2,6 +2,7 @@ import { InstallButton } from '../../components/InstallButton.jsx';
 import { useInstallState } from '../../lib/pwa.js';
 import { useSession } from '../auth/useSession.js';
 import { SHORTCUTS } from '../chat/useShortcuts.js';
+import { NotificationsSection } from './NotificationsSection.jsx';
 import { PasswordForm } from './PasswordForm.jsx';
 import { ProfileForm } from './ProfileForm.jsx';
 import styles from './Settings.module.css';
@@ -15,6 +16,7 @@ export function SettingsPage() {
       <h1 className={styles.title}>Settings</h1>
       <ProfileForm user={user} />
       <PasswordForm />
+      <NotificationsSection />
       <section className={styles.section} aria-labelledby="install-heading">
         <h2 id="install-heading" className={styles.heading}>
           Install app

@@ -75,24 +75,25 @@ Database schema changes: edit `server/src/db/schema.js`, then
 All configuration is environment variables, validated once at start-up. A bad configuration stops
 the server with one message listing every problem. See `server/.env.example`.
 
-| Variable                    | Default                  | Notes                                                                                                |
-| --------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `NODE_ENV`                  | `development`            | `production` turns on Secure cookies and requires a Turso URL                                        |
-| `PORT`                      | `4000`                   |                                                                                                      |
-| `LOG_LEVEL`                 | `info`                   | pino levels                                                                                          |
-| `CORS_ORIGINS`              | `http://localhost:5173`  | Comma-separated origins (scheme, host, port; no path). Also the websocket and CSRF origin allow-list |
-| `DATABASE_URL`              | `file:./data/chatify.db` | `libsql://...` for Turso. A local file is refused in production                                      |
-| `DATABASE_AUTH_TOKEN`       | -                        | Required for a remote database                                                                       |
-| `JWT_ACCESS_SECRET`         | required                 | At least 32 characters. Also keys the CSRF token signature                                           |
-| `ACCESS_TOKEN_TTL_SECONDS`  | `900`                    |                                                                                                      |
-| `REFRESH_TOKEN_TTL_SECONDS` | `604800`                 |                                                                                                      |
-| `LOGIN_MAX_FAILURES`        | `5`                      | Consecutive failures before the account locks                                                        |
-| `LOGIN_LOCKOUT_MINUTES`     | `15`                     |                                                                                                      |
-| `AUTH_RATE_LIMIT_MAX`       | `30`                     | Credential requests per IP per 15 minutes                                                            |
-| `TRUST_PROXY`               | `0`                      | Number of reverse proxies in front of the server                                                     |
-| `UPLOAD_DIR`                | `./data/uploads`         | Must be on persistent storage                                                                        |
-| `MAX_UPLOAD_BYTES`          | `26214400`               | 25 MB                                                                                                |
-| `CLIENT_DIST_DIR`           | -                        | When set, the server also serves the built client with SPA fallback                                  |
+| Variable                                                 | Default                  | Notes                                                                                                |
+| -------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                                               | `development`            | `production` turns on Secure cookies and requires a Turso URL                                        |
+| `PORT`                                                   | `4000`                   |                                                                                                      |
+| `LOG_LEVEL`                                              | `info`                   | pino levels                                                                                          |
+| `CORS_ORIGINS`                                           | `http://localhost:5173`  | Comma-separated origins (scheme, host, port; no path). Also the websocket and CSRF origin allow-list |
+| `DATABASE_URL`                                           | `file:./data/chatify.db` | `libsql://...` for Turso. A local file is refused in production                                      |
+| `DATABASE_AUTH_TOKEN`                                    | -                        | Required for a remote database                                                                       |
+| `JWT_ACCESS_SECRET`                                      | required                 | At least 32 characters. Also keys the CSRF token signature                                           |
+| `ACCESS_TOKEN_TTL_SECONDS`                               | `900`                    |                                                                                                      |
+| `REFRESH_TOKEN_TTL_SECONDS`                              | `604800`                 |                                                                                                      |
+| `LOGIN_MAX_FAILURES`                                     | `5`                      | Consecutive failures before the account locks                                                        |
+| `LOGIN_LOCKOUT_MINUTES`                                  | `15`                     |                                                                                                      |
+| `AUTH_RATE_LIMIT_MAX`                                    | `30`                     | Credential requests per IP per 15 minutes                                                            |
+| `TRUST_PROXY`                                            | `0`                      | Number of reverse proxies in front of the server                                                     |
+| `UPLOAD_DIR`                                             | `./data/uploads`         | Must be on persistent storage                                                                        |
+| `MAX_UPLOAD_BYTES`                                       | `26214400`               | 25 MB                                                                                                |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | -                        | Web Push. Set all three or none. Generate with `npm run vapid -w server`                             |
+| `CLIENT_DIST_DIR`                                        | -                        | When set, the server also serves the built client with SPA fallback                                  |
 
 ## Architecture
 
@@ -249,7 +250,14 @@ All endpoints are under `/api`, return JSON, and report errors as
 | `PATCH`, `DELETE /messages/:id`                  | Edit or delete own message                   |
 | `GET /sync?afterId=`                             | Messages missed while disconnected           |
 | `POST /attachments`                              | Upload one file (multipart field `file`)     |
-| `GET /attachments/:id`, `/:id/thumbnail`         | Authenticated download                       |
+| `GET /attachments/:id`, `/:id/thumbnail`         | Authenticated download (supports `Range`)    |
+| `PUT`, `DELETE /messages/:id/reaction`           | Set, change or clear your reaction           |
+| `PUT`, `DELETE /messages/:id/pin`                | Pin or unpin (max 10 per conversation)       |
+| `POST /messages/:id/forward`                     | Copy a message to up to 5 conversations      |
+| `GET /conversations/:id/pins`                    | Pinned messages                              |
+| `GET /search/messages?q=`                        | Search your messages (2+ characters)         |
+| `GET /push/key`                                  | Whether push is on, and the public key       |
+| `POST`, `DELETE /push/subscriptions`             | Register or remove this browser for push     |
 
 ## Security model
 
@@ -402,6 +410,33 @@ after a reload or a closed tab. Sends are idempotent, so a message that actually
 duplicated. Messages the server rejects for good (for example after being removed from a group) are
 dropped from the queue. The queue is cleared on explicit sign-out. Attachments need a connection to
 upload, so only text and already uploaded files are queued.
+
+## Replies, reactions, pins, forwarding, search
+
+- **Replies** carry a short preview of the original; choosing the quote jumps to it, loading older
+  history when needed.
+- **Reactions** are a fixed set of six icons (like, love, funny, sad, star, done). One reaction per
+  person per message; choosing the same one again removes it.
+- **Pins**: up to 10 per conversation. In groups only owners and admins can pin.
+- **Forwarding** copies the text and duplicates any file, so each message owns its file. Up to 5
+  conversations at once; every target is checked before anything is sent.
+- **Search** matches message text in your own conversations (2+ characters). It is a plain
+  substring match, which works the same on local SQLite and Turso.
+
+## Notifications
+
+Browsers can show a notification for new messages while Chatify is not open. Run
+`npm run vapid -w server`, set the three `VAPID_*` variables on the server, then turn notifications
+on in Settings on each device. Only people with no live connection are notified, muted
+conversations are skipped, and a subscription the push service reports as gone is deleted. On
+iPhone and iPad the app must first be added to the home screen. Signing out turns notifications off
+for that browser.
+
+## Voice notes
+
+The microphone button in the composer records with the browser's MediaRecorder (up to 5 minutes),
+shows the elapsed time, and sends on request. Recordings are checked by content like any upload and
+must be audio. Playback uses a custom player; the server answers `Range` requests so seeking works.
 
 ## Known limits
 

@@ -22,6 +22,10 @@ export function MessageList({
   meId,
   isGroup,
   names,
+  canPin,
+  highlightId,
+  onForward,
+  onJumpTo,
   ref,
 }) {
   const virtuoso = useRef(null);
@@ -35,6 +39,14 @@ export function MessageList({
   }, [messages]);
 
   useImperativeHandle(ref, () => ({
+    scrollToMessage: (messageId) => {
+      const index = messagesRef.current.findIndex((message) => message.id === messageId);
+      if (index === -1) {
+        return false;
+      }
+      virtuoso.current?.scrollToIndex({ index, align: 'center', behavior: 'auto' });
+      return true;
+    },
     scrollToBottom: () =>
       virtuoso.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior: 'smooth' }),
   }));
@@ -87,6 +99,12 @@ export function MessageList({
             <MessageItem
               message={message}
               own={message.senderId === meId}
+              meId={meId}
+              names={names}
+              canPin={canPin}
+              highlighted={highlightId === message.id}
+              onForward={onForward}
+              onJumpTo={onJumpTo}
               showDay={startsNewDay(messages, position)}
               continued={continuesRun(messages, position)}
               senderName={names[message.senderId] ?? 'Former member'}

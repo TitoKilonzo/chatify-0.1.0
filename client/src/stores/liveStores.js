@@ -79,3 +79,27 @@ export const useDraftStore = create((set) => ({
       return { drafts: { ...s.drafts, [conversationId]: text } };
     }),
 }));
+
+/** The message the user is replying to, per conversation. Cleared on send or cancel. */
+export const useReplyStore = create((set) => ({
+  byConversation: {},
+  setReply: (conversationId, message) =>
+    set((s) => {
+      if (!message) {
+        const { [conversationId]: _removed, ...rest } = s.byConversation;
+        return { byConversation: rest };
+      }
+      return {
+        byConversation: {
+          ...s.byConversation,
+          [conversationId]: {
+            id: message.id,
+            senderId: message.senderId,
+            body: message.body.slice(0, 140),
+            deleted: false,
+            attachmentKind: message.attachment?.kind ?? null,
+          },
+        },
+      };
+    }),
+}));

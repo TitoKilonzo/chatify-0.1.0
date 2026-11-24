@@ -1,11 +1,12 @@
 import { useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { Paperclip, Send, X } from 'lucide-react';
+import { Mic, Paperclip, Send, Trash2, X } from 'lucide-react';
 import { ApiError, api } from '../../lib/api.js';
-import { formatBytes } from '../../lib/format.js';
+import { attachmentLabel, formatBytes, formatDuration } from '../../lib/format.js';
 import { getSocket } from '../../lib/socket.js';
-import { useDraftStore } from '../../stores/liveStores.js';
+import { useDraftStore, useReplyStore } from '../../stores/liveStores.js';
 import { IconButton } from '../../components/ui/IconButton.jsx';
 import { sendMessage } from './messageActions.js';
+import { useVoiceRecorder, voiceSupported } from './voiceRecorder.js';
 import styles from './Composer.module.css';
 
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
@@ -19,7 +20,9 @@ const TYPING_REPEAT_MS = 2000;
  * paste support (through the imperative addFile), per-conversation drafts, and typing signals.
  * Enter sends, Shift+Enter inserts a new line.
  */
-export function Composer({ conversationId, meId, onSent, ref }) {
+export function Composer({ conversationId, meId, names, onSent, ref }) {
+  const reply = useReplyStore((state) => state.byConversation[conversationId] ?? null);
+  const setReply = useReplyStore((state) => state.setReply);
   const text = useDraftStore((state) => state.drafts[conversationId] ?? '');
   const setDraft = useDraftStore((state) => state.setDraft);
   const [upload, setUpload] = useState(null);
@@ -27,6 +30,9 @@ export function Composer({ conversationId, meId, onSent, ref }) {
   const fileInputRef = useRef(null);
   const lastTyping = useRef(0);
   const controllerRef = useRef(null);
+  const voice = useVoiceRecorder();
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const [voiceError, setVoiceError] = useState(null);
 
   // An upload belongs to one conversation: switching chats drops it (the server cleans up).
   useEffect(
@@ -92,6 +98,13 @@ export function Composer({ conversationId, meId, onSent, ref }) {
     }
   }
 
+  // Choosing Reply moves focus into the field so the answer can be typed straight away.
+  useEffect(() => {
+    if (reply) {
+      textareaRef.current?.focus();
+    }
+  }, [reply]);
+
   useImperativeHandle(ref, () => ({
     addFile,
     focus: () => textareaRef.current?.focus(),
@@ -102,9 +115,38 @@ export function Composer({ conversationId, meId, onSent, ref }) {
     setUpload(null);
   }
 
+  async function sendVoice() {
+    const recording = await voice.finish();
+    if (!recording) {
+      return;
+    }
+    setVoiceBusy(true);
+    setVoiceError(null);
+    try {
+      const data = await api.upload('/attachments', recording.file, {
+        fields: { voice: '1', durationMs: String(recording.durationMs) },
+      });
+      sendMessage({
+        conversationId,
+        senderId: meId,
+        body: '',
+        attachment: data.attachment,
+        replyTo: reply,
+      });
+      setReply(conversationId, null);
+      onSent?.();
+    } catch (error) {
+      setVoiceError(error.message);
+    } finally {
+      setVoiceBusy(false);
+    }
+  }
+
   const uploading = upload?.status === 'uploading';
   const body = text.trim();
   const canSend = !uploading && (body.length > 0 || upload?.status === 'ready');
+  const showMic = !canSend && !uploading && voiceSupported();
+  const recording = voice.state === 'recording';
 
   function submit() {
     if (!canSend) {
@@ -115,7 +157,9 @@ export function Composer({ conversationId, meId, onSent, ref }) {
       senderId: meId,
       body,
       attachment: upload?.status === 'ready' ? upload.attachment : null,
+      replyTo: reply,
     });
+    setReply(conversationId, null);
     setDraft(conversationId, '');
     setUpload(null);
     signalTyping(false);
@@ -140,6 +184,8 @@ export function Composer({ conversationId, meId, onSent, ref }) {
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault();
       submit();
+    } else if (event.key === 'Escape' && reply) {
+      setReply(conversationId, null);
     }
   }
 
@@ -159,6 +205,26 @@ export function Composer({ conversationId, meId, onSent, ref }) {
         submit();
       }}
     >
+      {reply ? (
+        <div className={styles.replyBar}>
+          <div className={styles.replyInfo}>
+            <span className={styles.replyName}>
+              Replying to{' '}
+              {reply.senderId === meId ? 'yourself' : (names?.[reply.senderId] ?? 'a message')}
+            </span>
+            <span className={styles.replyText}>
+              {reply.body || attachmentLabel(reply.attachmentKind)}
+            </span>
+          </div>
+          <IconButton
+            label="Cancel reply"
+            icon={X}
+            size="sm"
+            onClick={() => setReply(conversationId, null)}
+          />
+        </div>
+      ) : null}
+
       {upload ? (
         <div className={styles.upload}>
           <div className={styles.uploadInfo}>
@@ -183,47 +249,79 @@ export function Composer({ conversationId, meId, onSent, ref }) {
         </div>
       ) : null}
 
-      <div className={styles.row}>
-        <input
-          ref={fileInputRef}
-          type="file"
-          className="visually-hidden"
-          tabIndex={-1}
-          aria-hidden="true"
-          onChange={(event) => {
-            addFile(event.target.files?.[0]);
-            event.target.value = '';
-          }}
-        />
-        <IconButton
-          label="Attach a file"
-          icon={Paperclip}
-          onClick={() => fileInputRef.current?.click()}
-        />
-        <label htmlFor={`composer-${conversationId}`} className="visually-hidden">
-          Message
-        </label>
-        <textarea
-          id={`composer-${conversationId}`}
-          ref={textareaRef}
-          className={styles.field}
-          rows={1}
-          maxLength={MAX_BODY}
-          placeholder="Write a message"
-          value={text}
-          onChange={onChange}
-          onKeyDown={onKeyDown}
-          onPaste={onPaste}
-          onBlur={() => signalTyping(false)}
-        />
-        <IconButton
-          label="Send message"
-          icon={Send}
-          variant="primary"
-          type="submit"
-          disabled={!canSend}
-        />
-      </div>
+      {voice.error || voiceError ? (
+        <p className={styles.counter} role="alert">
+          {voice.error ?? voiceError}
+        </p>
+      ) : null}
+
+      {recording || voiceBusy ? (
+        <div className={styles.row}>
+          <IconButton
+            label="Discard recording"
+            icon={Trash2}
+            onClick={voice.cancel}
+            disabled={voiceBusy}
+          />
+          <p className={styles.recording} role="timer" aria-label="Recording length">
+            <span className={styles.recordingDot} aria-hidden="true" />
+            {voiceBusy ? 'Sending...' : `Recording ${formatDuration(voice.elapsedMs)}`}
+          </p>
+          <IconButton
+            label="Send voice note"
+            icon={Send}
+            variant="primary"
+            onClick={sendVoice}
+            disabled={voiceBusy}
+          />
+        </div>
+      ) : (
+        <div className={styles.row}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="visually-hidden"
+            tabIndex={-1}
+            aria-hidden="true"
+            onChange={(event) => {
+              addFile(event.target.files?.[0]);
+              event.target.value = '';
+            }}
+          />
+          <IconButton
+            label="Attach a file"
+            icon={Paperclip}
+            onClick={() => fileInputRef.current?.click()}
+          />
+          <label htmlFor={`composer-${conversationId}`} className="visually-hidden">
+            Message
+          </label>
+          <textarea
+            id={`composer-${conversationId}`}
+            ref={textareaRef}
+            className={styles.field}
+            rows={1}
+            maxLength={MAX_BODY}
+            placeholder="Write a message"
+            value={text}
+            onChange={onChange}
+            onKeyDown={onKeyDown}
+            onPaste={onPaste}
+            onBlur={() => signalTyping(false)}
+          />
+          {showMic ? (
+            <IconButton label="Record a voice note" icon={Mic} onClick={voice.start} />
+          ) : (
+            <IconButton
+              label="Send message"
+              icon={Send}
+              variant="primary"
+              type="submit"
+              disabled={!canSend}
+            />
+          )}
+        </div>
+      )}
       {text.length >= COUNTER_FROM ? (
         <p className={styles.counter} aria-live="polite">
           {text.length} / {MAX_BODY}

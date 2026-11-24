@@ -134,6 +134,57 @@ try {
   await shot(a, '02-alice');
   await shot(b, '03-bob');
 
+  // Replies, reactions, pins, forward and message search.
+  const lineOf = (page, text) =>
+    page.getByRole('log').locator('div[class*="line"]').filter({ hasText: text }).last();
+  const actOn = async (page, text, item) => {
+    await lineOf(page, text).getByRole('button', { name: 'Message actions' }).click();
+    await page.getByRole('menuitem', { name: item }).click();
+  };
+
+  await actOn(b, 'hello bob', 'Reply');
+  await b.getByText('Replying to', { exact: false }).waitFor();
+  await b.getByLabel('Message', { exact: true }).fill('replying to you');
+  await b.getByRole('button', { name: 'Send message' }).click();
+  await a
+    .getByRole('log')
+    .getByRole('button', { name: 'Go to the original message' })
+    .waitFor({ timeout: 5000 });
+  check('Alice sees the reply with its quoted original', true);
+
+  await actOn(a, 'replying to you', 'React');
+  await a.getByRole('button', { name: 'Love', exact: true }).click();
+  await b.getByRole('button', { name: 'Love, 1' }).waitFor({ timeout: 5000 });
+  check("Bob sees Alice's reaction live", true);
+
+  await actOn(a, 'replying to you', 'Pin');
+  await a.getByRole('log').getByText('Pinned', { exact: true }).waitFor({ timeout: 5000 });
+  await a.getByRole('button', { name: 'Pinned messages' }).click();
+  await a.getByRole('dialog').getByText('replying to you').waitFor();
+  check('a pinned message is listed in the pins dialog', true);
+  await a.keyboard.press('Escape');
+
+  await a.getByRole('button', { name: 'Search messages' }).click();
+  await a.getByLabel('Search all messages').fill('while you were away 1');
+  const hit = a.getByRole('dialog').getByRole('button', { name: /while you were away 1/ });
+  await hit.waitFor({ timeout: 5000 });
+  await hit.click();
+  await a.getByRole('log').getByText('while you were away 1').waitFor();
+  check('search finds a message and jumps to it', true);
+
+  await actOn(a, 'hello bob', 'Forward');
+  await a.getByRole('dialog').getByRole('checkbox').first().check();
+  await a.getByRole('button', { name: /^Forward \(1\)$/ }).click();
+  await a
+    .getByRole('log')
+    .locator('div[class*="line"]')
+    .filter({ hasText: 'Forwarded' })
+    .first()
+    .waitFor({ timeout: 5000 });
+  check('a forwarded copy appears labelled Forwarded', true);
+  await a.keyboard.press('Escape');
+  await shot(a, '06-phase1-alice');
+
   // Mobile layout: list and pane are separate screens with a back button.
   const phone = await browser.newContext({ viewport: { width: 390, height: 780 } });
   const m = await phone.newPage();

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
-import { ArrowLeft, Info, Paperclip } from 'lucide-react';
+import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
+import { ArrowLeft, Info, Paperclip, Pin } from 'lucide-react';
 import { Alert } from '../../components/ui/Alert.jsx';
 import { Avatar } from '../../components/ui/Avatar.jsx';
 import { Button } from '../../components/ui/Button.jsx';
@@ -13,7 +13,9 @@ import { effectivePresence, usePresenceStore, useTypingStore } from '../../store
 import { useSession } from '../auth/useSession.js';
 import { Composer } from './Composer.jsx';
 import { ConversationInfoDialog } from './ConversationInfoDialog.jsx';
-import { loadLatest, markRead } from './messageActions.js';
+import { ForwardDialog } from './ForwardDialog.jsx';
+import { loadLatest, loadUntil, markRead } from './messageActions.js';
+import { PinsDialog } from './PinsDialog.jsx';
 import { MessageList } from './MessageList.jsx';
 import { useConversationDetail } from './useConversations.js';
 import { isViewing, setViewing } from './viewing.js';
@@ -54,13 +56,47 @@ export function ConversationPane() {
 function OpenConversation({ conversation, meId, section }) {
   const navigate = useNavigate();
   const conversationId = conversation.id;
+  const isGroup = conversation.type === 'group';
   const state = useMessageStore(selectConversation(conversationId));
   const listRef = useRef(null);
   const composerRef = useRef(null);
   const [showInfo, setShowInfo] = useState(false);
+  const [showPins, setShowPins] = useState(false);
+  const [forwarding, setForwarding] = useState(null);
+  const [highlightId, setHighlightId] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const targetParam = Number(searchParams.get('m')) || null;
+  const myRole = conversation.role;
+  // Direct chats: anyone may pin. Groups: owners and admins only (the server enforces it).
+  const canPin = !isGroup || myRole === 'owner' || myRole === 'admin';
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
-  const isGroup = conversation.type === 'group';
+
+  const jumpTo = useCallback(
+    async (messageId) => {
+      if (!(await loadUntil(conversationId, messageId))) {
+        return;
+      }
+      // The list renders the newly loaded page on the next frame.
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToMessage(messageId);
+        setHighlightId(messageId);
+        setTimeout(
+          () => setHighlightId((current) => (current === messageId ? null : current)),
+          2500,
+        );
+      });
+    },
+    [conversationId],
+  );
+
+  // A search result opens the chat with ?m=<id>; scroll there once, then drop the parameter.
+  useEffect(() => {
+    if (targetParam && state.loaded) {
+      jumpTo(targetParam);
+      setSearchParams({}, { replace: true });
+    }
+  }, [targetParam, state.loaded, jumpTo, setSearchParams]);
 
   // Names for message senders and the typing line, from the member list or the counterpart.
   const names = useMemo(() => {
@@ -144,6 +180,7 @@ function OpenConversation({ conversation, meId, section }) {
         names={names}
         onBack={() => navigate(`/${section}`)}
         onInfo={() => setShowInfo(true)}
+        onPins={() => setShowPins(true)}
       />
 
       <div className={styles.body}>
@@ -170,6 +207,10 @@ function OpenConversation({ conversation, meId, section }) {
             meId={meId}
             isGroup={isGroup}
             names={names}
+            canPin={canPin}
+            highlightId={highlightId}
+            onForward={setForwarding}
+            onJumpTo={jumpTo}
           />
         )}
         {dragging ? (
@@ -184,8 +225,21 @@ function OpenConversation({ conversation, meId, section }) {
         ref={composerRef}
         conversationId={conversationId}
         meId={meId}
+        names={names}
         onSent={() => listRef.current?.scrollToBottom()}
       />
+
+      <PinsDialog
+        open={showPins}
+        onClose={() => setShowPins(false)}
+        conversationId={conversationId}
+        names={names}
+        onSelect={(messageId) => {
+          setShowPins(false);
+          jumpTo(messageId);
+        }}
+      />
+      <ForwardDialog message={forwarding} onClose={() => setForwarding(null)} />
 
       <ConversationInfoDialog
         open={showInfo}
@@ -198,7 +252,7 @@ function OpenConversation({ conversation, meId, section }) {
   );
 }
 
-function Header({ conversation, names, onBack, onInfo }) {
+function Header({ conversation, names, onBack, onInfo, onPins }) {
   const live = usePresenceStore((state) => state.byUser);
   const typingIds = useTypingStore((state) => state.byConversation[conversation.id]);
   const isGroup = conversation.type === 'group';
@@ -235,6 +289,7 @@ function Header({ conversation, names, onBack, onInfo }) {
           {subtitle}
         </p>
       </div>
+      <IconButton label="Pinned messages" icon={Pin} onClick={onPins} />
       <IconButton label="Conversation details" icon={Info} onClick={onInfo} />
     </header>
   );

@@ -70,6 +70,8 @@ export async function attachRealtime({
 
   const allowedOrigins = new Set(env.CORS_ORIGINS);
   const registry = createRegistry();
+  // Users with a live socket see messages in the app; only the others get a push notification.
+  container.pushService.setOnlineCheck((userId) => registry.isOnline(userId));
 
   const io = new Server(server, {
     serveClient: false,

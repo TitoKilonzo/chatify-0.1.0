@@ -89,6 +89,9 @@ export const attachments = sqliteTable(
     sizeBytes: integer('size_bytes').notNull(),
     width: integer('width'),
     height: integer('height'),
+    // Voice notes: recorded in the app, so they play inline and carry their length.
+    isVoice: integer('is_voice', { mode: 'boolean' }).notNull().default(false),
+    durationMs: integer('duration_ms'),
     createdAt: createdAt(),
   },
   (table) => [
@@ -142,6 +145,12 @@ export const messages = sqliteTable(
     clientId: text('client_id').notNull(),
     body: text('body').notNull().default(''),
     attachmentId: text('attachment_id').references(() => attachments.id, { onDelete: 'set null' }),
+    // The message this one replies to, in the same conversation.
+    replyToId: integer('reply_to_id').references(() => messages.id, { onDelete: 'set null' }),
+    forwarded: integer('forwarded', { mode: 'boolean' }).notNull().default(false),
+    pinnedAt: integer('pinned_at', { mode: 'timestamp_ms' }),
+    // Informational (who pinned it), so no foreign key.
+    pinnedBy: text('pinned_by'),
     editedAt: integer('edited_at', { mode: 'timestamp_ms' }),
     deletedAt: integer('deleted_at', { mode: 'timestamp_ms' }),
     createdAt: createdAt(),
@@ -155,6 +164,48 @@ export const messages = sqliteTable(
     index('messages_sender_id_idx').on(table.senderId),
     // One attachment belongs to at most one message.
     uniqueIndex('messages_attachment_id_unique').on(table.attachmentId),
+    index('messages_reply_to_id_idx').on(table.replyToId),
+    // Serves "pinned messages in this conversation".
+    index('messages_conversation_pinned_idx').on(table.conversationId, table.pinnedAt),
+  ],
+);
+
+/** One reaction per user per message. The key names an icon from a fixed set (see reactions.js). */
+export const messageReactions = sqliteTable(
+  'message_reactions',
+  {
+    messageId: integer('message_id')
+      .notNull()
+      .references(() => messages.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    key: text('key').notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.messageId, table.userId] }),
+    index('message_reactions_user_id_idx').on(table.userId),
+  ],
+);
+
+/** Browser push subscriptions, one per browser profile. */
+export const pushSubscriptions = sqliteTable(
+  'push_subscriptions',
+  {
+    id: id(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    endpoint: text('endpoint').notNull(),
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    userAgent: text('user_agent'),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('push_subscriptions_endpoint_unique').on(table.endpoint),
+    index('push_subscriptions_user_id_idx').on(table.userId),
   ],
 );
 

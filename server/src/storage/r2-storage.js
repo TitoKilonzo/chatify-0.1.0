@@ -1,4 +1,5 @@
 import {
+  CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
   PutObjectCommand,
@@ -73,6 +74,19 @@ export function createR2Storage({
         }
         throw err;
       }
+    },
+
+    /** Server-side copy inside the bucket: no bytes pass through the application. */
+    async copy(fromKey, toKey) {
+      assertValidKey(fromKey);
+      assertValidKey(toKey);
+      await client.send(
+        new CopyObjectCommand({
+          Bucket: bucket,
+          Key: toKey,
+          CopySource: `${bucket}/${fromKey}`,
+        }),
+      );
     },
 
     async delete(key) {

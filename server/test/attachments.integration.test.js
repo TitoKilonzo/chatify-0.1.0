@@ -339,3 +339,68 @@ describe('attachments', () => {
     });
   });
 });
+
+describe('voice notes', () => {
+  let ctx;
+  beforeAll(async () => {
+    ctx = await createTestApp({ MAX_UPLOAD_BYTES: '200000' });
+  });
+  afterAll(() => ctx.cleanup());
+
+  // A minimal Ogg/Opus first page: capture pattern, header fields, one segment, OpusHead.
+  const OGG = Buffer.concat([
+    Buffer.from('OggS', 'latin1'),
+    Buffer.from([0, 2]),
+    Buffer.alloc(20),
+    Buffer.from([1, 19]),
+    Buffer.from('OpusHead', 'latin1'),
+    Buffer.from([1, 1, 0, 0, 0x80, 0xbb, 0, 0, 0, 0, 0]),
+    Buffer.alloc(200),
+  ]);
+
+  async function pair() {
+    const [a, b] = await Promise.all([signUp(ctx.app, 'a'), signUp(ctx.app, 'b')]);
+    const res = await a.client.post('/api/conversations/direct', { userId: b.id });
+    return { a, b, id: res.body.conversation.id };
+  }
+
+  it('stores a voice note with its duration and serves byte ranges', async () => {
+    const { a, b, id } = await pair();
+    const res = await a.client.upload('/api/attachments', OGG, 'voice.ogg', {
+      fields: { voice: '1', durationMs: '4200' },
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.attachment).toMatchObject({ kind: 'voice', durationMs: 4200 });
+    expect(res.body.attachment.mimeType).toMatch(/^audio\//);
+
+    const sent = await a.client.post(`/api/conversations/${id}/messages`, {
+      clientId: `voice-${Date.now()}`,
+      body: '',
+      attachmentId: res.body.attachment.id,
+    });
+    expect(sent.status).toBe(201);
+
+    const part = await b.client.get(res.body.attachment.url).set('Range', 'bytes=0-9').buffer(true);
+    expect(part.status).toBe(206);
+    expect(part.headers['content-range']).toBe(`bytes 0-9/${OGG.length}`);
+    expect(part.body.length).toBe(10);
+
+    const bad = await b.client
+      .get(res.body.attachment.url)
+      .set('Range', `bytes=${OGG.length + 5}-`);
+    expect(bad.status).toBe(416);
+  });
+
+  it('rejects a voice note that is not audio', async () => {
+    const { a } = await pair();
+    const png = await sharp({
+      create: { width: 8, height: 8, channels: 3, background: '#4A2F22' },
+    })
+      .png()
+      .toBuffer();
+    const res = await a.client.upload('/api/attachments', png, 'x.png', {
+      fields: { voice: '1', durationMs: '1000' },
+    });
+    expect(res.status).toBe(415);
+  });
+});

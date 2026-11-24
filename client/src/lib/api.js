@@ -160,7 +160,7 @@ async function request(method, path, body) {
 }
 
 /** One multipart upload through XMLHttpRequest, the only browser API that reports upload progress. */
-function xhrUpload(method, path, file, { csrf, onProgress, signal }) {
+function xhrUpload(method, path, file, { csrf, onProgress, signal, fields = {} }) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open(method, `${API_BASE}${path}`);
@@ -201,6 +201,10 @@ function xhrUpload(method, path, file, { csrf, onProgress, signal }) {
 
     signal?.addEventListener('abort', () => xhr.abort(), { once: true });
     const form = new FormData();
+    // Text fields go before the file so the server can read them first.
+    for (const [name, value] of Object.entries(fields)) {
+      form.append(name, value);
+    }
     form.append('file', file);
     xhr.send(form);
   });
@@ -211,10 +215,10 @@ export const api = {
   post: (path, body) => request('POST', path, body),
   put: (path, body) => request('PUT', path, body),
   patch: (path, body) => request('PATCH', path, body),
-  delete: (path) => request('DELETE', path),
+  delete: (path, body) => request('DELETE', path, body),
   /** Upload one file. options: { method = 'POST', onProgress(0..1), signal }. */
-  upload: (path, file, { method = 'POST', onProgress, signal } = {}) =>
+  upload: (path, file, { method = 'POST', onProgress, signal, fields } = {}) =>
     withRefresh(path, async () =>
-      xhrUpload(method, path, file, { csrf: await csrfToken(), onProgress, signal }),
+      xhrUpload(method, path, file, { csrf: await csrfToken(), onProgress, signal, fields }),
     ),
 };

@@ -1,6 +1,6 @@
 import { forbidden, notFound, tooManyRequests, unsupportedMedia } from '../../utils/errors.js';
 import { newStorageKey } from '../../storage/local-storage.js';
-import { detectMime, IMAGE_MIME, sanitizeFileName } from './file-validation.js';
+import { detectMime, IMAGE_MIME, sanitizeFileName, toVoiceMime } from './file-validation.js';
 import { processAvatar, processImage } from './image-processing.js';
 import { toAttachment } from './attachments.serializer.js';
 
@@ -29,7 +29,7 @@ export function createAttachmentsService({
 
   const service = {
     /** Validate by content, store the file and thumbnail, and record the attachment. */
-    async upload(userId, file) {
+    async upload(userId, file, { voice = false, durationMs = null } = {}) {
       if (!file) {
         throw unsupportedMedia('No file was uploaded');
       }
@@ -39,7 +39,14 @@ export function createAttachmentsService({
       }
 
       const originalName = sanitizeFileName(file.originalname);
-      const { mimeType } = await detectMime(file.buffer, originalName);
+      const detected = await detectMime(file.buffer, originalName);
+      let mimeType = detected.mimeType;
+      if (voice) {
+        mimeType = toVoiceMime(mimeType);
+        if (!mimeType) {
+          throw unsupportedMedia('A voice note must be an audio recording');
+        }
+      }
 
       let width = null;
       let height = null;
@@ -63,6 +70,8 @@ export function createAttachmentsService({
           sizeBytes: file.buffer.length,
           width,
           height,
+          isVoice: voice,
+          durationMs: voice ? durationMs : null,
         });
         return toAttachment(row);
       } catch (err) {
@@ -108,7 +117,43 @@ export function createAttachmentsService({
       if (!stored) {
         throw notFound('File not found');
       }
-      return { ...stored, ...meta };
+      return { ...stored, ...meta, inline: meta.inline || attachment.isVoice };
+    },
+
+    /**
+     * Copy an attachment (file and thumbnail) into a new, unattached attachment owned by userId.
+     * Used when forwarding: every message owns its own file, so deleting one copy never breaks
+     * another. The caller has already checked access to the source.
+     */
+    async duplicate(attachmentId, userId) {
+      const source = await attachmentsRepository.findById(attachmentId);
+      if (!source) {
+        throw notFound('File not found');
+      }
+      const { key, thumbnailKey } = newStorageKey();
+      await storage.copy(source.storageKey, key);
+      let copiedThumbnail = null;
+      try {
+        if (source.thumbnailKey) {
+          await storage.copy(source.thumbnailKey, thumbnailKey);
+          copiedThumbnail = thumbnailKey;
+        }
+        return await attachmentsRepository.create({
+          uploaderId: userId,
+          storageKey: key,
+          thumbnailKey: copiedThumbnail,
+          originalName: source.originalName,
+          mimeType: source.mimeType,
+          sizeBytes: source.sizeBytes,
+          width: source.width,
+          height: source.height,
+          isVoice: source.isVoice,
+          durationMs: source.durationMs,
+        });
+      } catch (err) {
+        await removeStored(key, copiedThumbnail);
+        throw err;
+      }
     },
 
     /** Delete an attachment row and its files. Idempotent. */

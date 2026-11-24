@@ -1,6 +1,7 @@
 import path from 'node:path';
 import express from 'express';
 import helmet from 'helmet';
+import { createPushRouter } from './modules/push/push.routes.js';
 import { storageOrigin } from './storage/index.js';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -68,7 +69,7 @@ function contentSecurityPolicy(env) {
  * passwordHashOptions lets tests use cheap argon2 parameters. The composed container is exposed
  * on app.locals.container so the realtime layer shares the same services and event bus.
  */
-export function createApp({ env, logger, database, passwordHashOptions, storage }) {
+export function createApp({ env, logger, database, passwordHashOptions, storage, pushSender }) {
   const app = express();
   const container = createContainer({
     env,
@@ -76,6 +77,7 @@ export function createApp({ env, logger, database, passwordHashOptions, storage 
     database,
     passwordHashOptions,
     storageOverride: storage,
+    pushSender,
   });
   app.locals.container = container;
 
@@ -123,6 +125,7 @@ export function createApp({ env, logger, database, passwordHashOptions, storage 
   });
   const sendLimiter = createRateLimiter({ windowMs: 60_000, limit: 120 });
   const uploadLimiter = createRateLimiter({ windowMs: 10 * 60_000, limit: 60 });
+  const searchLimiter = createRateLimiter({ windowMs: 60_000, limit: 60 });
 
   const fileUpload = createSingleFileUpload({ maxBytes: env.MAX_UPLOAD_BYTES });
   const avatarUpload = createSingleFileUpload({ maxBytes: AVATAR_MAX_BYTES });
@@ -163,6 +166,7 @@ export function createApp({ env, logger, database, passwordHashOptions, storage 
       credentialLimiter,
     }),
   );
+  app.use('/api/push', createPushRouter({ pushService: container.pushService, requireAuth }));
   app.use(
     '/api/conversations',
     requireAuth,
@@ -176,7 +180,15 @@ export function createApp({ env, logger, database, passwordHashOptions, storage 
       ],
     }),
   );
-  app.use('/api', createMessagesRouter({ controller: messagesController, requireAuth }));
+  app.use(
+    '/api',
+    createMessagesRouter({
+      controller: messagesController,
+      requireAuth,
+      sendLimiter,
+      searchLimiter,
+    }),
+  );
   app.use(
     '/api/attachments',
     requireAuth,

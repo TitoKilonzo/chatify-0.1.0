@@ -11,7 +11,8 @@ export function toAttachment(row) {
     sizeBytes: row.sizeBytes,
     width: row.width,
     height: row.height,
-    kind: IMAGE_MIME.test(row.mimeType) ? 'image' : 'file',
+    kind: row.isVoice ? 'voice' : IMAGE_MIME.test(row.mimeType) ? 'image' : 'file',
+    durationMs: row.durationMs ?? null,
     url: `/api/attachments/${row.id}`,
     thumbnailUrl: row.thumbnailKey ? `/api/attachments/${row.id}/thumbnail` : null,
   };

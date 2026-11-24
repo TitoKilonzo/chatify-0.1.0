@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api, setSessionExpiredHandler } from '../../lib/api.js';
+import { disablePush } from '../../lib/push.js';
 import { clearOutbox } from '../../lib/outbox.js';
 import { useDraftStore } from '../../stores/liveStores.js';
 
@@ -62,7 +63,11 @@ export function useRegister() {
 export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => api.post('/auth/logout'),
+    mutationFn: async () => {
+      // Stop notifications for this browser while the session can still authorize the request.
+      await disablePush().catch(() => {});
+      return api.post('/auth/logout');
+    },
     // Sign out locally even if the request failed: the user's intent is clear, and the server
     // session expires on its own.
     onSettled: () => {

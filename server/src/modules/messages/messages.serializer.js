@@ -20,7 +20,10 @@ export function betterState(a, b) {
  * Shape one message for the API. receipts lists one entry per current recipient (every member but
  * the sender) so clients can derive sent, delivered, or read, for direct and group chats alike.
  */
-export function toMessage({ message, attachment }, { recipientIds, receiptRows = [] }) {
+export function toMessage(
+  { message, attachment },
+  { recipientIds, receiptRows = [], reactionRows = [], replyTo = null },
+) {
   const byUser = new Map(receiptRows.map((row) => [row.userId, row]));
   const deleted = Boolean(message.deletedAt);
   return {
@@ -33,13 +36,45 @@ export function toMessage({ message, attachment }, { recipientIds, receiptRows =
     editedAt: message.editedAt,
     deletedAt: message.deletedAt,
     createdAt: message.createdAt,
+    replyTo,
+    forwarded: message.forwarded,
+    pinnedAt: deleted ? null : message.pinnedAt,
+    pinnedBy: deleted ? null : message.pinnedBy,
+    reactions: deleted ? [] : groupReactions(reactionRows),
     receipts: recipientIds
       .filter((userId) => userId !== message.senderId)
       .map((userId) => ({ userId, state: receiptState(byUser.get(userId)) })),
   };
 }
 
+/** [{ key, userIds }] in the order each icon was first used. */
+export function groupReactions(rows) {
+  const byKey = new Map();
+  for (const row of rows) {
+    const list = byKey.get(row.key) ?? [];
+    list.push(row.userId);
+    byKey.set(row.key, list);
+  }
+  return [...byKey].map(([key, userIds]) => ({ key, userIds }));
+}
+
 const PREVIEW_LENGTH = 140;
+
+/** What a reply shows about the message it answers. */
+export function toReplyPreview(row) {
+  if (!row) {
+    return null;
+  }
+  const { message, attachment } = row;
+  const deleted = Boolean(message.deletedAt);
+  return {
+    id: message.id,
+    senderId: message.senderId,
+    body: deleted ? '' : message.body.slice(0, PREVIEW_LENGTH),
+    deleted,
+    attachmentKind: !deleted && attachment ? toAttachment(attachment).kind : null,
+  };
+}
 
 /** Compact form used for the conversation list preview. */
 export function toLastMessage({ message, attachment }) {

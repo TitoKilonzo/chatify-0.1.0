@@ -125,3 +125,93 @@
   color: var(--text-primary);
   font-size: var(--text-xs);
 }
+
+.highlighted .bubble {
+  outline: 2px solid var(--focus-default);
+  outline-offset: 2px;
+}
+
+.forwarded {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.own .forwarded {
+  color: var(--text-inverse-muted);
+}
+
+.quote {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  text-align: left;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  border: 0;
+  border-left: 3px solid currentColor;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.quoteName {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.quoteText {
+  font-size: var(--text-sm);
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 0 var(--space-2);
+  color: inherit;
+  font-size: var(--text-xs);
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+.reactionMine {
+  font-weight: var(--weight-semibold);
+  opacity: 1;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.picker {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  align-self: flex-start;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-popover);
+}
+
+.own .picker {
+  align-self: flex-end;
+}

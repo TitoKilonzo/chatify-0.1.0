@@ -14,7 +14,7 @@ import { testEnv } from './test-env.js';
 const CHEAP_HASH_OPTIONS = { memoryCost: 1024, timeCost: 1, parallelism: 1 };
 
 /** Build an isolated app with its own migrated database. Call cleanup() in afterAll. */
-export async function createTestApp(envOverrides = {}, { storage } = {}) {
+export async function createTestApp(envOverrides = {}, { storage, pushSender } = {}) {
   const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'chatify-uploads-'));
   const env = testEnv({ UPLOAD_DIR: uploadDir, ...envOverrides });
   const database = await createTestDatabase();
@@ -25,6 +25,7 @@ export async function createTestApp(envOverrides = {}, { storage } = {}) {
     database,
     passwordHashOptions: CHEAP_HASH_OPTIONS,
     storage,
+    pushSender,
   });
   return {
     app,
@@ -90,14 +91,24 @@ export function createClient(app) {
       const csrf = await token();
       return agent.put(url).set('X-CSRF-Token', csrf).send(body);
     },
-    delete: async (url) => {
+    delete: async (url, body) => {
       const csrf = await token();
-      return agent.delete(url).set('X-CSRF-Token', csrf);
+      const req = agent.delete(url).set('X-CSRF-Token', csrf);
+      return body === undefined ? req : req.send(body);
     },
     /** Multipart upload of one in-memory file. method is 'post' or 'put'. */
-    upload: async (url, buffer, filename, { method = 'post', field = 'file' } = {}) => {
+    upload: async (
+      url,
+      buffer,
+      filename,
+      { method = 'post', field = 'file', fields = {} } = {},
+    ) => {
       const csrf = await token();
-      return agent[method](url).set('X-CSRF-Token', csrf).attach(field, buffer, filename);
+      const req = agent[method](url).set('X-CSRF-Token', csrf);
+      for (const [name, value] of Object.entries(fields)) {
+        req.field(name, value);
+      }
+      return req.attach(field, buffer, filename);
     },
   };
 }

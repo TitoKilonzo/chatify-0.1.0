@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { MessageSquarePlus, Plus, Search, Users } from 'lucide-react';
+import { MessageSquarePlus, Plus, Search, TextSearch, Users } from 'lucide-react';
 import { Alert } from '../../components/ui/Alert.jsx';
 import { Button } from '../../components/ui/Button.jsx';
 import { IconButton } from '../../components/ui/IconButton.jsx';
@@ -8,6 +8,7 @@ import { Menu } from '../../components/ui/Menu.jsx';
 import { filterConversations, sortConversations } from '../../lib/conversation-cache.js';
 import { cx } from '../../lib/cx.js';
 import { ConversationListItem } from './ConversationListItem.jsx';
+import { MessageSearchDialog } from './MessageSearchDialog.jsx';
 import { NewChatDialog } from './NewChatDialog.jsx';
 import { NewGroupDialog } from './NewGroupDialog.jsx';
 import { useConversationsQuery } from './useConversations.js';
@@ -53,6 +54,11 @@ export function ConversationList({ scope, meId, searchRef }) {
     <div className={styles.list}>
       <header className={styles.header}>
         <h1 className={styles.title}>{scope === 'groups' ? 'Groups' : 'Chats'}</h1>
+        <IconButton
+          label="Search messages"
+          icon={TextSearch}
+          onClick={() => setDialog('messages')}
+        />
         <Menu
           label="Start a conversation"
           items={menuItems}
@@ -120,6 +126,7 @@ export function ConversationList({ scope, meId, searchRef }) {
         )}
       </nav>
 
+      <MessageSearchDialog open={dialog === 'messages'} onClose={() => setDialog(null)} />
       <NewChatDialog open={dialog === 'chat'} onClose={() => setDialog(null)} />
       <NewGroupDialog open={dialog === 'group'} onClose={() => setDialog(null)} />
     </div>

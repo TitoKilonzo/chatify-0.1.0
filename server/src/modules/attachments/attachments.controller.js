@@ -4,7 +4,25 @@ import { toSelfUser } from '../users/users.serializer.js';
 const FILE_CSP = "default-src 'none'; sandbox";
 
 /** Stream a stored file with headers that make browsers treat it as inert data. */
-async function sendFile(res, file, { cacheSeconds }) {
+/** Parse a single-range header; null means serve the whole file, 'invalid' means 416. */
+function parseRange(header, size) {
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header ?? '');
+  if (!match || (match[1] === '' && match[2] === '')) {
+    return null;
+  }
+  let start;
+  let end;
+  if (match[1] === '') {
+    start = Math.max(size - Number(match[2]), 0);
+    end = size - 1;
+  } else {
+    start = Number(match[1]);
+    end = match[2] === '' ? size - 1 : Math.min(Number(match[2]), size - 1);
+  }
+  return start > end || start >= size ? 'invalid' : { start, end };
+}
+
+async function sendFile(res, file, { cacheSeconds, rangeHeader }) {
   if (file.url) {
     // Cloud storage: the caller is already authorized. The response type and disposition are part
     // of the signature, and the bucket lives on another origin, so a file cannot run in this app.
@@ -15,8 +33,15 @@ async function sendFile(res, file, { cacheSeconds }) {
     res.redirect(302, file.url);
     return;
   }
+  const range = file.range ? parseRange(rangeHeader, file.size) : null;
+  if (range === 'invalid') {
+    res.status(416).set('Content-Range', `bytes */${file.size}`).end();
+    file.stream.destroy();
+    return;
+  }
+  res.set('Accept-Ranges', 'bytes');
   res.set({
-    'Content-Length': String(file.size),
+    'Content-Length': String(range ? range.end - range.start + 1 : file.size),
     'X-Content-Type-Options': 'nosniff',
     'Content-Security-Policy': FILE_CSP,
     'Cross-Origin-Resource-Policy': 'same-site',
@@ -30,7 +55,13 @@ async function sendFile(res, file, { cacheSeconds }) {
   }
   res.type(file.mimeType);
   try {
-    await pipeline(file.stream, res);
+    if (range) {
+      file.stream.destroy();
+      res.status(206).set('Content-Range', `bytes ${range.start}-${range.end}/${file.size}`);
+      await pipeline(file.range(range.start, range.end), res);
+    } else {
+      await pipeline(file.stream, res);
+    }
   } catch {
     // The client went away or the file vanished mid-stream. Nothing useful remains to send.
     res.destroy();
@@ -40,7 +71,15 @@ async function sendFile(res, file, { cacheSeconds }) {
 export function createAttachmentsController({ attachmentsService }) {
   return {
     async upload(req, res) {
-      const attachment = await attachmentsService.upload(req.auth.userId, req.file);
+      const voice = req.body?.voice === '1';
+      const duration = Number(req.body?.durationMs);
+      const attachment = await attachmentsService.upload(req.auth.userId, req.file, {
+        voice,
+        durationMs:
+          voice && Number.isFinite(duration)
+            ? Math.min(Math.max(Math.round(duration), 0), 3_600_000)
+            : null,
+      });
       res.status(201).json({ attachment });
     },
 
@@ -49,7 +88,7 @@ export function createAttachmentsController({ attachmentsService }) {
         req.auth.userId,
         req.validated.params.attachmentId,
       );
-      await sendFile(res, file, { cacheSeconds: 3600 });
+      await sendFile(res, file, { cacheSeconds: 3600, rangeHeader: req.get('range') });
     },
 
     async thumbnail(req, res) {

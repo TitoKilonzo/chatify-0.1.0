@@ -41,6 +41,54 @@ export function createMessagesController({ messagesService }) {
       res.status(204).end();
     },
 
+    async react(req, res) {
+      const message = await messagesService.react(
+        req.auth.userId,
+        req.validated.params.messageId,
+        req.validated.body.key,
+      );
+      res.json({ message });
+    },
+
+    async unreact(req, res) {
+      res.json({
+        message: await messagesService.unreact(req.auth.userId, req.validated.params.messageId),
+      });
+    },
+
+    async pin(req, res) {
+      res.json({
+        message: await messagesService.pin(req.auth.userId, req.validated.params.messageId),
+      });
+    },
+
+    async unpin(req, res) {
+      res.json({
+        message: await messagesService.unpin(req.auth.userId, req.validated.params.messageId),
+      });
+    },
+
+    async pins(req, res) {
+      const messages = await messagesService.listPins(
+        req.auth.userId,
+        req.validated.params.conversationId,
+      );
+      res.json({ messages });
+    },
+
+    async forward(req, res) {
+      const messages = await messagesService.forward(
+        req.auth.userId,
+        req.validated.params.messageId,
+        req.validated.body.conversationIds,
+      );
+      res.status(201).json({ messages });
+    },
+
+    async search(req, res) {
+      res.json(await messagesService.search(req.auth.userId, req.validated.query));
+    },
+
     async sync(req, res) {
       res.json(await messagesService.sync(req.auth.userId, req.validated.query));
     },

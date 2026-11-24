@@ -28,3 +28,19 @@ export function formatBytes(bytes) {
   const rounded = unit === 0 || value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
   return `${rounded} ${UNITS[unit]}`;
 }
+
+/** Milliseconds as m:ss, for voice note lengths. */
+export function formatDuration(ms) {
+  const totalSeconds = Math.max(0, Math.round((ms ?? 0) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = String(totalSeconds % 60).padStart(2, '0');
+  return `${minutes}:${seconds}`;
+}
+
+/** Short description of an attachment kind, for quoted replies. */
+export function attachmentLabel(kind) {
+  if (kind === 'voice') {
+    return 'Voice note';
+  }
+  return kind === 'image' ? 'Photo' : 'File';
+}

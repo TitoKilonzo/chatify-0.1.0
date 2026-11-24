@@ -1,9 +1,10 @@
-import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { uniqueViolation } from '../../db/errors.js';
 import {
   attachments,
   conversationMembers,
   conversations,
+  messageReactions,
   messageReceipts,
   messages,
 } from '../../db/schema.js';
@@ -30,12 +31,120 @@ export function createMessagesRepository(db) {
 
     findBySenderClient,
 
+    /** Messages with their attachments for a set of ids, as Map<id, { message, attachment }>. */
+    async findManyByIds(ids) {
+      if (ids.length === 0) {
+        return new Map();
+      }
+      const rows = await withAttachment(db).where(inArray(messages.id, ids));
+      return new Map(rows.map((row) => [row.message.id, row]));
+    },
+
+    async reactionsFor(messageIds) {
+      if (messageIds.length === 0) {
+        return [];
+      }
+      return db
+        .select()
+        .from(messageReactions)
+        .where(inArray(messageReactions.messageId, messageIds))
+        .orderBy(asc(messageReactions.createdAt));
+    },
+
+    /** One reaction per user per message: choosing another icon replaces the previous one. */
+    async setReaction(messageId, userId, key, createdAt) {
+      await db
+        .insert(messageReactions)
+        .values({ messageId, userId, key, createdAt })
+        .onConflictDoUpdate({
+          target: [messageReactions.messageId, messageReactions.userId],
+          set: { key, createdAt },
+        });
+    },
+
+    async clearReaction(messageId, userId) {
+      await db
+        .delete(messageReactions)
+        .where(and(eq(messageReactions.messageId, messageId), eq(messageReactions.userId, userId)));
+    },
+
+    /** Pin or unpin (pinnedAt null). Returns false when the message was already in that state. */
+    async setPinned(id, pinnedAt, pinnedBy) {
+      const rows = await db
+        .update(messages)
+        .set({ pinnedAt, pinnedBy: pinnedAt ? pinnedBy : null })
+        .where(
+          and(
+            eq(messages.id, id),
+            isNull(messages.deletedAt),
+            pinnedAt ? isNull(messages.pinnedAt) : isNotNull(messages.pinnedAt),
+          ),
+        )
+        .returning({ id: messages.id });
+      return rows.length > 0;
+    },
+
+    async countPinned(conversationId) {
+      const [row] = await db
+        .select({ count: sql`count(*)`.mapWith(Number) })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.conversationId, conversationId),
+            isNotNull(messages.pinnedAt),
+            isNull(messages.deletedAt),
+          ),
+        );
+      return row.count;
+    },
+
+    async listPinned(conversationId) {
+      return withAttachment(db)
+        .where(
+          and(
+            eq(messages.conversationId, conversationId),
+            isNotNull(messages.pinnedAt),
+            isNull(messages.deletedAt),
+          ),
+        )
+        .orderBy(desc(messages.pinnedAt), desc(messages.id));
+    },
+
+    /**
+     * Messages whose text contains the term, newest first, limited to conversations the user
+     * belongs to. pattern must already be escaped for LIKE (see likePattern in the service).
+     */
+    async search(userId, pattern, { conversationId, beforeId, limit }) {
+      const conditions = [
+        eq(conversationMembers.userId, userId),
+        isNull(messages.deletedAt),
+        sql`${messages.body} LIKE ${pattern} ESCAPE '\\'`,
+      ];
+      if (conversationId) {
+        conditions.push(eq(messages.conversationId, conversationId));
+      }
+      if (beforeId) {
+        conditions.push(lt(messages.id, beforeId));
+      }
+      return db
+        .select({ message: messages, attachment: attachments })
+        .from(messages)
+        .innerJoin(
+          conversationMembers,
+          eq(conversationMembers.conversationId, messages.conversationId),
+        )
+        .leftJoin(attachments, eq(attachments.id, messages.attachmentId))
+        .where(and(...conditions))
+        .orderBy(desc(messages.id))
+        .limit(limit + 1);
+    },
+
     /**
      * Insert a message and bump the conversation's activity time in one transaction.
      * A repeated (senderId, clientId) returns the original row with duplicate: true, which makes
      * client retries after a lost ack idempotent.
      */
-    async create({ conversationId, senderId, clientId, body, attachmentId }) {
+    async create({ conversationId, senderId, clientId, body, attachmentId, replyToId, forwarded }) {
       try {
         const id = await db.transaction(async (tx) => {
           const [row] = await tx
@@ -46,6 +155,8 @@ export function createMessagesRepository(db) {
               clientId,
               body,
               attachmentId: attachmentId ?? null,
+              replyToId: replyToId ?? null,
+              forwarded: Boolean(forwarded),
             })
             .returning({ id: messages.id, createdAt: messages.createdAt });
           await tx

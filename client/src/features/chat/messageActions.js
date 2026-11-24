@@ -65,8 +65,13 @@ const inflight = new Set();
  * they have no pending bubble to mark as failed and simply stay in the outbox for the next try.
  */
 async function transmit(pending, { tracked = true } = {}) {
-  const { conversationId, clientId, body, attachment } = pending;
-  const payload = { clientId, body, attachmentId: attachment?.id };
+  const { conversationId, clientId, body, attachment, replyTo } = pending;
+  const payload = {
+    clientId,
+    body,
+    attachmentId: attachment?.id,
+    replyToId: replyTo?.id,
+  };
   if (inflight.has(clientId)) {
     return;
   }
@@ -109,12 +114,18 @@ async function transmit(pending, { tracked = true } = {}) {
   }
 }
 
-export async function sendMessage({ conversationId, senderId, body, attachment = null }) {
+export async function sendMessage({
+  conversationId,
+  senderId,
+  body,
+  attachment = null,
+  replyTo = null,
+}) {
   const clientId = crypto.randomUUID();
-  const pending = createPending({ clientId, conversationId, senderId, body, attachment });
+  const pending = createPending({ clientId, conversationId, senderId, body, attachment, replyTo });
   store().addPending(pending);
   // Written before the first attempt so a reload or closed tab cannot lose the message.
-  addToOutbox(senderId, { clientId, conversationId, body, attachment });
+  addToOutbox(senderId, { clientId, conversationId, body, attachment, replyTo });
   await transmit(pending);
 }
 
@@ -147,6 +158,7 @@ export function flushOutbox(userId) {
         senderId: userId,
         body: entry.body,
         attachment: entry.attachment,
+        replyTo: entry.replyTo,
       }),
       { tracked: false },
     );
@@ -244,4 +256,50 @@ export async function catchUp() {
     }
     afterId = data.messages[data.messages.length - 1].id;
   }
+}
+
+export async function reactToMessage(messageId, key) {
+  const data = await api.put(`/messages/${messageId}/reaction`, { key });
+  store().upsert(data.message);
+}
+
+export async function clearReaction(messageId) {
+  const data = await api.delete(`/messages/${messageId}/reaction`);
+  store().upsert(data.message);
+}
+
+export async function setPinned(messageId, pinned) {
+  const data = pinned
+    ? await api.put(`/messages/${messageId}/pin`)
+    : await api.delete(`/messages/${messageId}/pin`);
+  store().upsert(data.message);
+}
+
+/** Send a copy of a message to up to five other conversations. */
+export async function forwardMessage(messageId, conversationIds) {
+  const data = await api.post(`/messages/${messageId}/forward`, { conversationIds });
+  store().upsert(data.messages);
+  queryClient.invalidateQueries({ queryKey: conversationsKey });
+  return data.messages;
+}
+
+/**
+ * Page older messages until the given message is in the cache (or history runs out). Used to jump
+ * to a search result or a pinned message that is further back than what is loaded.
+ */
+export async function loadUntil(conversationId, messageId, maxPages = 50) {
+  const has = () =>
+    store().byConversation[conversationId]?.messages.some((message) => message.id === messageId);
+  for (let page = 0; page < maxPages && !has(); page += 1) {
+    const current = store().byConversation[conversationId];
+    if (!current?.loaded) {
+      await loadLatest(conversationId);
+      continue;
+    }
+    if (!current.hasMore || !current.nextCursor) {
+      break;
+    }
+    await loadOlder(conversationId);
+  }
+  return Boolean(has());
 }

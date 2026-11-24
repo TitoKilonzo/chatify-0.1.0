@@ -1,9 +1,20 @@
 import { AppError, conflict, forbidden, notFound, validationFailed } from '../../utils/errors.js';
-import { toMessage } from './messages.serializer.js';
+import { randomUUID } from 'node:crypto';
+import { toMessage, toReplyPreview } from './messages.serializer.js';
+import { isReactionKey } from './reactions.js';
 
 export const MAX_BODY_LENGTH = 4000;
 export const DEFAULT_PAGE_SIZE = 40;
 export const SYNC_PAGE_SIZE = 200;
+export const MAX_PINS = 10;
+export const MAX_FORWARD_TARGETS = 5;
+export const SEARCH_PAGE_SIZE = 30;
+export const MIN_SEARCH_LENGTH = 2;
+
+/** Escape LIKE wildcards so the term is matched literally. */
+export function likePattern(term) {
+  return `%${term.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+}
 
 /**
  * Message business logic. Every entry point proves the caller is a member of the conversation and
@@ -32,10 +43,21 @@ export function createMessagesService({
       return [];
     }
     const conversationIds = [...new Set(rows.map((row) => row.message.conversationId))];
-    const [members, receipts] = await Promise.all([
+    const replyIds = [
+      ...new Set(rows.map((row) => row.message.replyToId).filter((id) => id !== null)),
+    ];
+    const [members, receipts, reactions, replied] = await Promise.all([
       conversationsRepository.listMemberIdsFor(conversationIds),
       messagesRepository.receiptsFor(rows.map((row) => row.message.id)),
+      messagesRepository.reactionsFor(rows.map((row) => row.message.id)),
+      messagesRepository.findManyByIds(replyIds),
     ]);
+    const reactionsByMessage = new Map();
+    for (const reaction of reactions) {
+      const list = reactionsByMessage.get(reaction.messageId) ?? [];
+      list.push(reaction);
+      reactionsByMessage.set(reaction.messageId, list);
+    }
     const receiptsByMessage = new Map();
     for (const receipt of receipts) {
       const list = receiptsByMessage.get(receipt.messageId) ?? [];
@@ -46,6 +68,8 @@ export function createMessagesService({
       toMessage(row, {
         recipientIds: members.get(row.message.conversationId) ?? [],
         receiptRows: receiptsByMessage.get(row.message.id) ?? [],
+        reactionRows: reactionsByMessage.get(row.message.id) ?? [],
+        replyTo: toReplyPreview(replied.get(row.message.replyToId)),
       }),
     );
   }
@@ -58,7 +82,7 @@ export function createMessagesService({
   const service = {
     serializeRows,
 
-    async send(userId, conversationId, { clientId, body, attachmentId }) {
+    async send(userId, conversationId, { clientId, body, attachmentId, replyToId, forwarded }) {
       await requireMember(conversationId, userId);
 
       const text = (body ?? '').trim();
@@ -78,6 +102,16 @@ export function createMessagesService({
         }
       }
 
+      if (replyToId) {
+        const target = await messagesRepository.findById(replyToId);
+        if (!target || target.message.conversationId !== conversationId) {
+          throw validationFailed([{ path: 'replyToId', message: 'Unknown message to reply to' }]);
+        }
+        if (target.message.deletedAt) {
+          throw validationFailed([{ path: 'replyToId', message: 'That message was deleted' }]);
+        }
+      }
+
       let created;
       try {
         created = await messagesRepository.create({
@@ -86,6 +120,8 @@ export function createMessagesService({
           clientId,
           body: text,
           attachmentId,
+          replyToId,
+          forwarded,
         });
       } catch (err) {
         if (
@@ -214,6 +250,109 @@ export function createMessagesService({
       });
     },
 
+    /** Set or replace the caller's reaction. key must be one of the fixed icon keys. */
+    async react(userId, messageId, key) {
+      if (!isReactionKey(key)) {
+        throw validationFailed([{ path: 'key', message: 'Unknown reaction' }]);
+      }
+      const row = await findForMember(messageId, userId);
+      if (row.message.deletedAt) {
+        throw new AppError(409, 'MESSAGE_DELETED', 'This message was deleted');
+      }
+      await messagesRepository.setReaction(messageId, userId, key, now());
+      return publishUpdate(messageId, row.message.conversationId);
+    },
+
+    async unreact(userId, messageId) {
+      const row = await findForMember(messageId, userId);
+      await messagesRepository.clearReaction(messageId, userId);
+      return publishUpdate(messageId, row.message.conversationId);
+    },
+
+    /** Pin a message. In direct chats any member can pin; in groups only owners and admins. */
+    async pin(userId, messageId) {
+      const row = await findForMember(messageId, userId);
+      await requirePinRights(row.message.conversationId, userId);
+      if (row.message.deletedAt) {
+        throw new AppError(409, 'MESSAGE_DELETED', 'This message was deleted');
+      }
+      if (row.message.pinnedAt) {
+        return serializeRows([row]).then(([message]) => message);
+      }
+      if ((await messagesRepository.countPinned(row.message.conversationId)) >= MAX_PINS) {
+        throw conflict('PIN_LIMIT', `A conversation can have at most ${MAX_PINS} pinned messages`);
+      }
+      await messagesRepository.setPinned(messageId, now(), userId);
+      return publishUpdate(messageId, row.message.conversationId);
+    },
+
+    async unpin(userId, messageId) {
+      const row = await findForMember(messageId, userId);
+      await requirePinRights(row.message.conversationId, userId);
+      await messagesRepository.setPinned(messageId, null, null);
+      return publishUpdate(messageId, row.message.conversationId);
+    },
+
+    async listPins(userId, conversationId) {
+      await requireMember(conversationId, userId);
+      return serializeRows(await messagesRepository.listPinned(conversationId));
+    },
+
+    /**
+     * Send a copy of a message (and its file) to up to five other conversations the caller belongs
+     * to. Every target is checked before anything is sent.
+     */
+    async forward(userId, messageId, conversationIds) {
+      const source = await findForMember(messageId, userId);
+      if (source.message.deletedAt) {
+        throw new AppError(409, 'MESSAGE_DELETED', 'This message was deleted');
+      }
+      const targets = [...new Set(conversationIds)].slice(0, MAX_FORWARD_TARGETS);
+      for (const conversationId of targets) {
+        await requireMember(conversationId, userId);
+      }
+      const sent = [];
+      for (const conversationId of targets) {
+        let attachmentId;
+        if (source.attachment) {
+          attachmentId = (await attachmentsService.duplicate(source.attachment.id, userId)).id;
+        }
+        const result = await service.send(userId, conversationId, {
+          clientId: `fwd-${randomUUID()}`,
+          body: source.message.body,
+          attachmentId,
+          forwarded: true,
+        });
+        sent.push(result.message);
+      }
+      return sent;
+    },
+
+    /** Find messages containing a term in the caller's conversations, newest first. */
+    async search(userId, { q, conversationId, before, limit = SEARCH_PAGE_SIZE }) {
+      const term = q.trim();
+      if (term.length < MIN_SEARCH_LENGTH) {
+        throw validationFailed([
+          { path: 'q', message: `Type at least ${MIN_SEARCH_LENGTH} characters` },
+        ]);
+      }
+      if (conversationId) {
+        await requireMember(conversationId, userId);
+      }
+      const rows = await messagesRepository.search(userId, likePattern(term), {
+        conversationId,
+        beforeId: before,
+        limit,
+      });
+      const hasMore = rows.length > limit;
+      const page = rows.slice(0, limit);
+      return {
+        messages: await serializeRows(page),
+        hasMore,
+        nextBefore: hasMore ? page[page.length - 1].message.id : null,
+      };
+    },
+
     /** Mark up to a message (default: the newest) as read. Returns the remaining unread count. */
     async markRead(userId, conversationId, upToMessageId) {
       await requireMember(conversationId, userId);
@@ -245,6 +384,23 @@ export function createMessagesService({
       }
     },
   };
+
+  /** Re-serialize one message and tell every member, so reactions and pins stay in step. */
+  async function publishUpdate(messageId, conversationId) {
+    const fresh = await messagesRepository.findById(messageId);
+    const [message] = await serializeRows([fresh]);
+    const memberIds = await conversationsRepository.listMemberIds(conversationId);
+    events.publish('message.updated', { message, memberIds });
+    return message;
+  }
+
+  async function requirePinRights(conversationId, userId) {
+    const member = await conversationsRepository.findMember(conversationId, userId);
+    const conversation = await conversationsRepository.findById(conversationId);
+    if (conversation.type === 'group' && member.role === 'member') {
+      throw forbidden('NOT_GROUP_ADMIN', 'Only group admins can pin messages');
+    }
+  }
 
   async function findForMember(messageId, userId) {
     const row = await messagesRepository.findById(messageId);

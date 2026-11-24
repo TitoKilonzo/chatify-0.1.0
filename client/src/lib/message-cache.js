@@ -19,7 +19,14 @@ export function compareMessages(a, b) {
 }
 
 /** A local copy of a message that has been submitted but not yet confirmed by the server. */
-export function createPending({ clientId, conversationId, senderId, body, attachment = null }) {
+export function createPending({
+  clientId,
+  conversationId,
+  senderId,
+  body,
+  attachment = null,
+  replyTo = null,
+}) {
   return {
     id: `pending:${clientId}`,
     clientId,
@@ -31,6 +38,11 @@ export function createPending({ clientId, conversationId, senderId, body, attach
     deletedAt: null,
     createdAt: new Date().toISOString(),
     receipts: [],
+    replyTo,
+    forwarded: false,
+    pinnedAt: null,
+    pinnedBy: null,
+    reactions: [],
     pending: true,
     failed: false,
   };

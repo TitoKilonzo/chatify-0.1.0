@@ -1,25 +1,79 @@
 import { memo, useState } from 'react';
-import { Copy, Ellipsis, Pencil, RotateCcw, Trash2 } from 'lucide-react';
+import {
+  Copy,
+  Ellipsis,
+  Forward,
+  Pencil,
+  Pin,
+  PinOff,
+  Reply,
+  RotateCcw,
+  SmilePlus,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { Button } from '../../components/ui/Button.jsx';
 import { Dialog } from '../../components/ui/Dialog.jsx';
 import { IconButton } from '../../components/ui/IconButton.jsx';
 import { Menu } from '../../components/ui/Menu.jsx';
 import { cx } from '../../lib/cx.js';
 import { formatDayLabel, formatMessageTime } from '../../lib/date.js';
+import { attachmentLabel } from '../../lib/format.js';
 import { AttachmentView } from './AttachmentView.jsx';
-import { deleteMessage, discardFailed, editMessage, retryMessage } from './messageActions.js';
+import { useReplyStore } from '../../stores/liveStores.js';
+import {
+  clearReaction,
+  deleteMessage,
+  discardFailed,
+  editMessage,
+  reactToMessage,
+  retryMessage,
+  setPinned,
+} from './messageActions.js';
+import { REACTIONS, REACTION_BY_KEY } from './reactions.js';
 import { ReceiptTicks } from './ReceiptTicks.jsx';
 import styles from './MessageItem.module.css';
 
 const MAX_BODY = 4000;
 
-function MessageItemBase({ message, own, showDay, continued, senderName, isGroup }) {
+function MessageItemBase({
+  message,
+  own,
+  meId,
+  showDay,
+  continued,
+  senderName,
+  isGroup,
+  names,
+  canPin,
+  highlighted,
+  onForward,
+  onJumpTo,
+}) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const setReply = useReplyStore((state) => state.setReply);
   const deleted = Boolean(message.deletedAt);
+  const settled = !message.pending && !deleted;
+  const myReaction = message.reactions?.find((r) => r.userIds.includes(meId))?.key ?? null;
+
+  async function run(action) {
+    setError(null);
+    try {
+      await action();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  function react(key) {
+    setPicking(false);
+    run(() => (key === myReaction ? clearReaction(message.id) : reactToMessage(message.id, key)));
+  }
 
   function startEdit() {
     setDraft(message.body);
@@ -62,6 +116,22 @@ function MessageItemBase({ message, own, showDay, continued, senderName, isGroup
   }
 
   const menuItems = [
+    {
+      id: 'reply',
+      label: 'Reply',
+      icon: Reply,
+      onSelect: () => setReply(message.conversationId, message),
+    },
+    { id: 'react', label: 'React', icon: SmilePlus, onSelect: () => setPicking(true) },
+    { id: 'forward', label: 'Forward', icon: Forward, onSelect: () => onForward?.(message) },
+    canPin
+      ? {
+          id: 'pin',
+          label: message.pinnedAt ? 'Unpin' : 'Pin',
+          icon: message.pinnedAt ? PinOff : Pin,
+          onSelect: () => run(() => setPinned(message.id, !message.pinnedAt)),
+        }
+      : null,
     message.body
       ? {
           id: 'copy',
@@ -70,12 +140,22 @@ function MessageItemBase({ message, own, showDay, continued, senderName, isGroup
           onSelect: () => navigator.clipboard?.writeText(message.body),
         }
       : null,
-    { id: 'edit', label: 'Edit', icon: Pencil, onSelect: startEdit },
-    { id: 'delete', label: 'Delete', icon: Trash2, onSelect: () => setConfirmingDelete(true) },
+    own ? { id: 'edit', label: 'Edit', icon: Pencil, onSelect: startEdit } : null,
+    own
+      ? { id: 'delete', label: 'Delete', icon: Trash2, onSelect: () => setConfirmingDelete(true) }
+      : null,
   ].filter(Boolean);
 
   return (
-    <div className={cx(styles.row, own && styles.own, continued && styles.continued)}>
+    <div
+      id={typeof message.id === 'number' ? `message-${message.id}` : undefined}
+      className={cx(
+        styles.row,
+        own && styles.own,
+        continued && styles.continued,
+        highlighted && styles.highlighted,
+      )}
+    >
       {showDay ? (
         <div className={styles.day}>
           <span>{formatDayLabel(message.createdAt)}</span>
@@ -83,7 +163,7 @@ function MessageItemBase({ message, own, showDay, continued, senderName, isGroup
       ) : null}
 
       <div className={styles.line}>
-        {own && !message.pending && !deleted && !editing ? (
+        {settled && !editing ? (
           <div className={styles.menu}>
             <Menu
               label="Message actions"
@@ -98,6 +178,38 @@ function MessageItemBase({ message, own, showDay, continued, senderName, isGroup
 
         <article className={styles.bubble} aria-label={`Message from ${own ? 'you' : senderName}`}>
           {isGroup && !own && !continued ? <p className={styles.sender}>{senderName}</p> : null}
+
+          {!deleted && message.forwarded ? (
+            <p className={styles.forwarded}>
+              <Forward size={12} aria-hidden="true" />
+              Forwarded
+            </p>
+          ) : null}
+          {!deleted && message.pinnedAt ? (
+            <p className={styles.forwarded}>
+              <Pin size={12} aria-hidden="true" />
+              Pinned
+            </p>
+          ) : null}
+          {!deleted && message.replyTo ? (
+            <button
+              type="button"
+              className={styles.quote}
+              onClick={() => onJumpTo?.(message.replyTo.id)}
+              aria-label="Go to the original message"
+            >
+              <span className={styles.quoteName}>
+                {message.replyTo.senderId === meId
+                  ? 'You'
+                  : (names?.[message.replyTo.senderId] ?? 'Former member')}
+              </span>
+              <span className={styles.quoteText}>
+                {message.replyTo.deleted
+                  ? 'This message was deleted'
+                  : message.replyTo.body || attachmentLabel(message.replyTo.attachmentKind)}
+              </span>
+            </button>
+          ) : null}
 
           {deleted ? (
             <p className={styles.deleted}>This message was deleted</p>
@@ -143,6 +255,33 @@ function MessageItemBase({ message, own, showDay, continued, senderName, isGroup
             </>
           )}
 
+          {!deleted && message.reactions?.length > 0 ? (
+            <ul className={styles.reactions} aria-label="Reactions">
+              {message.reactions.map((reaction) => {
+                const spec = REACTION_BY_KEY[reaction.key];
+                if (!spec) {
+                  return null;
+                }
+                const Icon = spec.icon;
+                const mine = reaction.userIds.includes(meId);
+                return (
+                  <li key={reaction.key}>
+                    <button
+                      type="button"
+                      className={cx(styles.reaction, mine && styles.reactionMine)}
+                      aria-pressed={mine}
+                      aria-label={`${spec.label}, ${reaction.userIds.length}`}
+                      onClick={() => react(reaction.key)}
+                    >
+                      <Icon size={12} aria-hidden="true" />
+                      <span>{reaction.userIds.length}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+
           <p className={styles.meta}>
             {message.editedAt && !deleted ? <span>edited</span> : null}
             <time dateTime={new Date(message.createdAt).toISOString()}>
@@ -152,6 +291,15 @@ function MessageItemBase({ message, own, showDay, continued, senderName, isGroup
           </p>
         </article>
       </div>
+
+      {picking ? (
+        <div className={styles.picker} role="group" aria-label="Choose a reaction">
+          {REACTIONS.map(({ key, icon: Icon, label }) => (
+            <IconButton key={key} label={label} icon={Icon} size="sm" onClick={() => react(key)} />
+          ))}
+          <IconButton label="Close" icon={X} size="sm" onClick={() => setPicking(false)} />
+        </div>
+      ) : null}
 
       {message.failed ? (
         <div className={styles.failed} role="alert">

@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs';
-import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { assertValidKey } from './keys.js';
 
@@ -34,7 +34,12 @@ export function createLocalStorage({ baseDir }) {
       const target = resolveKey(key);
       try {
         const info = await stat(target);
-        return { stream: createReadStream(target), size: info.size };
+        return {
+          stream: createReadStream(target),
+          size: info.size,
+          // Partial read for HTTP Range requests (audio seeking). Bounds are inclusive.
+          range: (start, end) => createReadStream(target, { start, end }),
+        };
       } catch (err) {
         if (err.code === 'ENOENT') {
           return null;
@@ -45,6 +50,13 @@ export function createLocalStorage({ baseDir }) {
 
     async delete(key) {
       await rm(resolveKey(key), { force: true });
+    },
+
+    async copy(fromKey, toKey) {
+      const source = resolveKey(fromKey);
+      const target = resolveKey(toKey);
+      await mkdir(path.dirname(target), { recursive: true });
+      await copyFile(source, target);
     },
 
     async signedUrl() {

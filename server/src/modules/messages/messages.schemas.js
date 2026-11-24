@@ -12,8 +12,22 @@ export const messageIdParams = z.object({ messageId: z.coerce.number().int().pos
 
 export const sendMessageBody = z.object({
   clientId,
+  replyToId: z.number().int().positive().optional(),
   body: z.string().max(MAX_BODY_LENGTH).default(''),
   attachmentId: z.uuid().optional(),
+});
+
+export const reactionBody = z.object({ key: z.string().min(1).max(20) });
+
+export const forwardBody = z.object({
+  conversationIds: z.array(z.uuid()).min(1).max(5),
+});
+
+export const searchQuery = z.object({
+  q: z.string().trim().min(1).max(100),
+  conversationId: z.uuid().optional(),
+  before: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(30),
 });
 
 export const editMessageBody = z.object({ body: z.string().max(MAX_BODY_LENGTH) });

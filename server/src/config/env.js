@@ -56,6 +56,20 @@ const envSchema = z
       .optional()
       .transform((value) => value || undefined)
       .pipe(z.url().optional()),
+    // Web Push (optional). Generate keys with: npm run vapid
+    VAPID_PUBLIC_KEY: z
+      .string()
+      .optional()
+      .transform((value) => value || undefined),
+    VAPID_PRIVATE_KEY: z
+      .string()
+      .optional()
+      .transform((value) => value || undefined),
+    VAPID_SUBJECT: z
+      .string()
+      .optional()
+      .transform((value) => value || undefined)
+      .pipe(z.union([z.url(), z.undefined()])),
     UPLOAD_DIR: z.string().min(1).default('./data/uploads'),
     MAX_UPLOAD_BYTES: z.coerce.number().int().min(1024).default(26214400),
     CLIENT_DIST_DIR: z
@@ -70,6 +84,14 @@ const envSchema = z
         code: 'custom',
         path: ['DATABASE_AUTH_TOKEN'],
         message: 'is required when DATABASE_URL points at a remote Turso database',
+      });
+    }
+    const vapid = ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT'];
+    if (vapid.some((name) => value[name]) && !vapid.every((name) => value[name])) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['VAPID_PUBLIC_KEY'],
+        message: 'VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT must be set together',
       });
     }
     if (value.STORAGE_DRIVER === 'r2') {

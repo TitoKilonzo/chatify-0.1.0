@@ -7,6 +7,8 @@ import { createAttachmentsRepository } from './modules/attachments/attachments.r
 import { createAttachmentsService } from './modules/attachments/attachments.service.js';
 import { createConversationsRepository } from './modules/conversations/conversations.repository.js';
 import { createConversationsService } from './modules/conversations/conversations.service.js';
+import { createPushRepository } from './modules/push/push.repository.js';
+import { createPushService } from './modules/push/push.service.js';
 import { createMessagesRepository } from './modules/messages/messages.repository.js';
 import { createMessagesService } from './modules/messages/messages.service.js';
 import { createUsersRepository } from './modules/users/users.repository.js';
@@ -19,7 +21,14 @@ import { createEventBus } from './utils/events.js';
  * Both the HTTP app and the realtime layer receive the same container, so they share one event
  * bus and one set of business rules.
  */
-export function createContainer({ env, logger, database, passwordHashOptions, storageOverride }) {
+export function createContainer({
+  env,
+  logger,
+  database,
+  passwordHashOptions,
+  storageOverride,
+  pushSender,
+}) {
   const { db } = database;
   const events = createEventBus({
     onError: (err, event) => logger.error({ err, event }, 'event handler failed'),
@@ -77,7 +86,18 @@ export function createContainer({ env, logger, database, passwordHashOptions, st
     logger,
   });
 
+  const pushService = createPushService({
+    env,
+    repository: createPushRepository(db),
+    conversationsRepository,
+    events,
+    logger,
+    sender: pushSender,
+  });
+  pushService.start();
+
   return {
+    pushService,
     events,
     accessTokens,
     sessionCookies,

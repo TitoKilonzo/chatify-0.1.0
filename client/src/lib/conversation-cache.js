@@ -26,6 +26,9 @@ export function previewText(conversation, meId) {
   if (last.body) {
     return `${prefix}${last.body}`;
   }
+  if (last.attachmentKind === 'voice') {
+    return `${prefix}Voice note`;
+  }
   return `${prefix}${last.attachmentKind === 'image' ? 'Photo' : 'File'}: ${last.attachmentName}`;
 }
 

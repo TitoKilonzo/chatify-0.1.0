@@ -18,7 +18,28 @@ const BINARY_ALLOW = new Set([
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'audio/mpeg',
   'video/mp4',
+  // Voice notes: browsers record webm/opus (Chrome, Firefox), ogg (Firefox) or mp4/aac (Safari).
+  'audio/webm',
+  'video/webm',
+  'audio/ogg',
+  'audio/opus',
+  'audio/mp4',
+  'audio/x-m4a',
+  'audio/aac',
 ]);
+
+const VOICE_MIME_MAP = {
+  'video/webm': 'audio/webm',
+  'video/mp4': 'audio/mp4',
+  'audio/x-m4a': 'audio/mp4',
+  'audio/opus': 'audio/ogg',
+};
+
+/** Voice notes are audio only. Returns the audio MIME type, or null when the content is not audio. */
+export function toVoiceMime(mimeType) {
+  const mapped = VOICE_MIME_MAP[mimeType] ?? mimeType;
+  return mapped.startsWith('audio/') ? mapped : null;
+}
 
 // Types file-type cannot identify by signature. Accepted only by extension plus a text check.
 const TEXT_EXTENSIONS = {
@@ -68,7 +89,9 @@ export async function detectMime(buffer, originalName) {
     throw unsupportedMedia('The file is empty');
   }
   const extension = path.extname(originalName).toLowerCase();
-  const detected = await fileTypeFromBuffer(buffer);
+  const found = await fileTypeFromBuffer(buffer);
+  // Some types come back with parameters, for example audio/ogg; codecs=opus.
+  const detected = found ? { ...found, mime: found.mime.split(';')[0].trim() } : undefined;
 
   if (detected) {
     if (BINARY_ALLOW.has(detected.mime)) {

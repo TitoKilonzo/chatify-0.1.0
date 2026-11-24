@@ -2,11 +2,16 @@ import { useState } from 'react';
 import { Download, FileText } from 'lucide-react';
 import { Dialog } from '../../components/ui/Dialog.jsx';
 import { formatBytes } from '../../lib/format.js';
+import { VoicePlayer } from './VoicePlayer.jsx';
 import styles from './AttachmentView.module.css';
 
 /** An attachment inside a message bubble: a thumbnail that opens a viewer, or a download card. */
 export function AttachmentView({ attachment }) {
   const [viewing, setViewing] = useState(false);
+
+  if (attachment.kind === 'voice') {
+    return <VoicePlayer attachment={attachment} />;
+  }
 
   if (attachment.kind === 'image') {
     const ratio =
