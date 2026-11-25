@@ -26,6 +26,7 @@ export function MessageList({
   highlightId,
   onForward,
   onJumpTo,
+  onOpenThread,
   ref,
 }) {
   const virtuoso = useRef(null);
@@ -105,6 +106,7 @@ export function MessageList({
               highlighted={highlightId === message.id}
               onForward={onForward}
               onJumpTo={onJumpTo}
+              onOpenThread={onOpenThread}
               showDay={startsNewDay(messages, position)}
               continued={continuesRun(messages, position)}
               senderName={names[message.senderId] ?? 'Former member'}

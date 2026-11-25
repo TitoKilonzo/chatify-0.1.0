@@ -42,6 +42,9 @@ export function createAuthService({
   }
 
   return {
+    /** Start a session for a user whose identity was already proven (for example by SMS code). */
+    startSession: (user, { userAgent } = {}) => issueSession(user, userAgent),
+
     async register({ displayName, username, email, password }, { userAgent } = {}) {
       const passwordHash = await hasher.hash(password);
       let user;

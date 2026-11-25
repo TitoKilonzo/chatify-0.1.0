@@ -185,6 +185,36 @@ try {
   await a.keyboard.press('Escape');
   await shot(a, '06-phase1-alice');
 
+  // Phase 2: end-to-end encryption between the two browsers.
+  for (const page of [a, b]) {
+    await page.goto(`${BASE_URL}/settings`);
+    await page.getByRole('button', { name: 'Create a new key' }).click();
+    await page.getByText('This device holds your encryption key.').waitFor({ timeout: 10000 });
+  }
+  check('both users created encryption keys in Settings', true);
+
+  await a.goto(`${BASE_URL}/chats`);
+  await a.getByRole('link', { name: new RegExp(`Bob ${suffix}`, 'i') }).click();
+  await a.getByRole('button', { name: 'Conversation details' }).click();
+  await a.getByRole('button', { name: 'Turn encryption on' }).click();
+  await a.getByRole('button', { name: 'Turn encryption off' }).waitFor({ timeout: 10000 });
+  check(
+    'Alice turned encryption on and sees a safety number',
+    (await a.locator('code').count()) > 0,
+  );
+  await a.keyboard.press('Escape');
+
+  await a.getByPlaceholder('Write an encrypted message').fill('secret handshake');
+  await a.getByRole('button', { name: 'Send message' }).click();
+  await a.getByRole('log').getByText('secret handshake').waitFor({ timeout: 5000 });
+  check('Alice sees her own encrypted message', true);
+
+  await b.goto(`${BASE_URL}/chats`);
+  await b.getByRole('link', { name: new RegExp(`Alice ${suffix}`, 'i') }).click();
+  await b.getByRole('log').getByText('secret handshake').waitFor({ timeout: 10000 });
+  check('Bob decrypts the message in his browser', true);
+  await shot(a, '07-phase2-encrypted');
+
   // Mobile layout: list and pane are separate screens with a back button.
   const phone = await browser.newContext({ viewport: { width: 390, height: 780 } });
   const m = await phone.newPage();

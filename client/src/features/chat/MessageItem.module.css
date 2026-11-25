@@ -215,3 +215,23 @@
 .own .picker {
   align-self: flex-end;
 }
+
+.timer {
+  display: inline-flex;
+  align-items: center;
+}
+
+.threadLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  align-self: flex-start;
+  padding: 0;
+  color: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-decoration: underline;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}

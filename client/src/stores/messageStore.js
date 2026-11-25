@@ -119,6 +119,35 @@ export const useMessageStore = create((set) => ({
       return messages === current.messages ? s : patch(s, conversationId, () => ({ messages }));
     }),
 
+  /** Messages that disappeared (timer ran out): removed outright, not shown as deleted. */
+  expire: (conversationId, messageIds) =>
+    set((s) => {
+      const current = s.byConversation[conversationId];
+      if (!current?.loaded) {
+        return s;
+      }
+      const gone = new Set(messageIds);
+      const kept = current.messages.filter((m) => !gone.has(m.id));
+      return kept.length === current.messages.length
+        ? s
+        : patch(s, conversationId, () => ({ messages: kept }));
+    }),
+
+  /** Drop messages whose expiry has passed, so they vanish on time even before the server says so. */
+  dropExpired: (nowMs = Date.now()) =>
+    set((s) => {
+      let next = s.byConversation;
+      for (const [id, current] of Object.entries(s.byConversation)) {
+        const kept = current.messages.filter(
+          (m) => !m.expiresAt || new Date(m.expiresAt).getTime() > nowMs,
+        );
+        if (kept.length !== current.messages.length) {
+          next = { ...next, [id]: { ...current, messages: kept } };
+        }
+      }
+      return next === s.byConversation ? s : { byConversation: next };
+    }),
+
   deleted: (conversationId, messageId) =>
     set((s) => {
       const current = s.byConversation[conversationId];

@@ -70,7 +70,19 @@ const envSchema = z
       .optional()
       .transform((value) => value || undefined)
       .pipe(z.union([z.url(), z.undefined()])),
+    // Phone sign-in. none turns it off; console prints codes to the log (development only);
+    // africastalking sends real SMS.
+    SMS_PROVIDER: z.enum(['none', 'console', 'africastalking']).default('none'),
+    SMS_DEFAULT_COUNTRY_CODE: z
+      .string()
+      .regex(/^\d{1,3}$/)
+      .default('254'),
+    AT_USERNAME: z.string().optional(),
+    AT_API_KEY: z.string().optional(),
+    AT_SENDER_ID: z.string().optional(),
     UPLOAD_DIR: z.string().min(1).default('./data/uploads'),
+    // Largest file accepted through resumable (chunked) uploads.
+    MAX_RESUMABLE_BYTES: z.coerce.number().int().min(1048576).default(524288000),
     MAX_UPLOAD_BYTES: z.coerce.number().int().min(1024).default(26214400),
     CLIENT_DIST_DIR: z
       .string()
@@ -84,6 +96,20 @@ const envSchema = z
         code: 'custom',
         path: ['DATABASE_AUTH_TOKEN'],
         message: 'is required when DATABASE_URL points at a remote Turso database',
+      });
+    }
+    if (value.SMS_PROVIDER === 'africastalking' && !(value.AT_USERNAME && value.AT_API_KEY)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['AT_API_KEY'],
+        message: 'AT_USERNAME and AT_API_KEY are required when SMS_PROVIDER=africastalking',
+      });
+    }
+    if (value.SMS_PROVIDER === 'console' && value.NODE_ENV === 'production') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['SMS_PROVIDER'],
+        message: 'console prints sign-in codes to the log and cannot be used in production',
       });
     }
     const vapid = ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT'];

@@ -11,6 +11,7 @@ import {
   searchQuery,
   sendMessageBody,
   syncQuery,
+  threadQuery,
 } from './messages.schemas.js';
 
 /** Routes nested under /api/conversations/:conversationId. mergeParams is not needed: we parse. */
@@ -50,6 +51,12 @@ export function createMessagesRouter({ controller, requireAuth, sendLimiter, sea
     requireAuth,
     validate({ params: messageIdParams }),
     controller.remove,
+  );
+  router.get(
+    '/messages/:messageId/thread',
+    requireAuth,
+    validate({ params: messageIdParams, query: threadQuery }),
+    controller.thread,
   );
   router.put(
     '/messages/:messageId/reaction',

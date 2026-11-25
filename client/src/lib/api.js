@@ -210,12 +210,61 @@ function xhrUpload(method, path, file, { csrf, onProgress, signal, fields = {} }
   });
 }
 
+/** One raw chunk of a resumable upload, with progress for that chunk. */
+function xhrChunk(path, blob, { csrf, offset, onProgress, signal }) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PATCH', `${API_BASE}${path}`);
+    xhr.withCredentials = true;
+    xhr.setRequestHeader('X-CSRF-Token', csrf);
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    xhr.setRequestHeader('Upload-Offset', String(offset));
+    xhr.responseType = 'json';
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        onProgress?.(event.loaded);
+      }
+    };
+    xhr.onerror = () =>
+      reject(
+        new ApiError({
+          status: 0,
+          code: 'NETWORK_ERROR',
+          message: 'Could not reach the server. Check your connection and try again.',
+        }),
+      );
+    xhr.onabort = () =>
+      reject(new ApiError({ status: 0, code: 'ABORTED', message: 'Upload cancelled' }));
+    xhr.onload = () => {
+      const data = xhr.response;
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(data);
+        return;
+      }
+      reject(
+        new ApiError({
+          status: xhr.status,
+          code: data?.error?.code ?? 'UNKNOWN_ERROR',
+          message: data?.error?.message ?? 'Upload failed. Please try again.',
+        }),
+      );
+    };
+    signal?.addEventListener('abort', () => xhr.abort(), { once: true });
+    xhr.send(blob);
+  });
+}
+
 export const api = {
   get: (path) => request('GET', path),
   post: (path, body) => request('POST', path, body),
   put: (path, body) => request('PUT', path, body),
   patch: (path, body) => request('PATCH', path, body),
   delete: (path, body) => request('DELETE', path, body),
+  /** Send one chunk of a resumable upload at the given byte offset. */
+  uploadChunk: (path, blob, { offset, onProgress, signal }) =>
+    withRefresh(path, async () =>
+      xhrChunk(path, blob, { csrf: await csrfToken(), offset, onProgress, signal }),
+    ),
   /** Upload one file. options: { method = 'POST', onProgress(0..1), signal }. */
   upload: (path, file, { method = 'POST', onProgress, signal, fields } = {}) =>
     withRefresh(path, async () =>

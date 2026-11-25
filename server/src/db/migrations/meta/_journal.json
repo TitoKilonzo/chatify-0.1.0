@@ -29,6 +29,41 @@
       "when": 1795496747317,
       "tag": "0003_phase1",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1795520495462,
+      "tag": "0004_disappearing",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1795520637830,
+      "tag": "0005_upload_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1795520782937,
+      "tag": "0006_threads",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1795586743749,
+      "tag": "0007_phone",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1795587070911,
+      "tag": "0008_e2ee",
+      "breakpoints": true
     }
   ]
 }

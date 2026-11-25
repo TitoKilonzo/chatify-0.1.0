@@ -3,6 +3,7 @@ import {
   Copy,
   Ellipsis,
   Forward,
+  MessagesSquare,
   Pencil,
   Pin,
   PinOff,
@@ -10,6 +11,7 @@ import {
   RotateCcw,
   SmilePlus,
   Trash2,
+  Timer,
   X,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button.jsx';
@@ -20,6 +22,7 @@ import { cx } from '../../lib/cx.js';
 import { formatDayLabel, formatMessageTime } from '../../lib/date.js';
 import { attachmentLabel } from '../../lib/format.js';
 import { AttachmentView } from './AttachmentView.jsx';
+import { rememberPlain } from '../../lib/e2eeSession.js';
 import { useReplyStore } from '../../stores/liveStores.js';
 import {
   clearReaction,
@@ -30,6 +33,8 @@ import {
   retryMessage,
   setPinned,
 } from './messageActions.js';
+import { useMessageText } from './E2eeContext.jsx';
+import { useE2ee } from './E2eeContext.jsx';
 import { REACTIONS, REACTION_BY_KEY } from './reactions.js';
 import { ReceiptTicks } from './ReceiptTicks.jsx';
 import styles from './MessageItem.module.css';
@@ -49,6 +54,7 @@ function MessageItemBase({
   highlighted,
   onForward,
   onJumpTo,
+  onOpenThread,
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -57,6 +63,8 @@ function MessageItemBase({
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState(false);
   const setReply = useReplyStore((state) => state.setReply);
+  const readable = useMessageText(message);
+  const e2ee = useE2ee();
   const deleted = Boolean(message.deletedAt);
   const settled = !message.pending && !deleted;
   const myReaction = message.reactions?.find((r) => r.userIds.includes(meId))?.key ?? null;
@@ -76,14 +84,14 @@ function MessageItemBase({
   }
 
   function startEdit() {
-    setDraft(message.body);
+    setDraft(readable.text);
     setError(null);
     setEditing(true);
   }
 
   async function saveEdit() {
     const text = draft.trim();
-    if (text === message.body) {
+    if (text === readable.text) {
       setEditing(false);
       return;
     }
@@ -93,7 +101,11 @@ function MessageItemBase({
     }
     setBusy(true);
     try {
-      await editMessage(message.id, text);
+      const outgoing = message.encrypted ? await e2ee.encrypt(text) : text;
+      await editMessage(message.id, outgoing);
+      if (message.encrypted) {
+        rememberPlain(message.clientId, text);
+      }
       setEditing(false);
     } catch (err) {
       setError(err.message);
@@ -122,8 +134,18 @@ function MessageItemBase({
       icon: Reply,
       onSelect: () => setReply(message.conversationId, message),
     },
+    isGroup && !message.threadRootId
+      ? {
+          id: 'thread',
+          label: 'Reply in thread',
+          icon: MessagesSquare,
+          onSelect: () => onOpenThread?.(message),
+        }
+      : null,
     { id: 'react', label: 'React', icon: SmilePlus, onSelect: () => setPicking(true) },
-    { id: 'forward', label: 'Forward', icon: Forward, onSelect: () => onForward?.(message) },
+    message.encrypted
+      ? null
+      : { id: 'forward', label: 'Forward', icon: Forward, onSelect: () => onForward?.(message) },
     canPin
       ? {
           id: 'pin',
@@ -132,12 +154,12 @@ function MessageItemBase({
           onSelect: () => run(() => setPinned(message.id, !message.pinnedAt)),
         }
       : null,
-    message.body
+    readable.text
       ? {
           id: 'copy',
           label: 'Copy text',
           icon: Copy,
-          onSelect: () => navigator.clipboard?.writeText(message.body),
+          onSelect: () => navigator.clipboard?.writeText(readable.text),
         }
       : null,
     own ? { id: 'edit', label: 'Edit', icon: Pencil, onSelect: startEdit } : null,
@@ -206,7 +228,9 @@ function MessageItemBase({
               <span className={styles.quoteText}>
                 {message.replyTo.deleted
                   ? 'This message was deleted'
-                  : message.replyTo.body || attachmentLabel(message.replyTo.attachmentKind)}
+                  : message.replyTo.encrypted
+                    ? 'Encrypted message'
+                    : message.replyTo.body || attachmentLabel(message.replyTo.attachmentKind)}
               </span>
             </button>
           ) : null}
@@ -251,7 +275,15 @@ function MessageItemBase({
           ) : (
             <>
               {message.attachment ? <AttachmentView attachment={message.attachment} /> : null}
-              {message.body ? <p className={styles.text}>{message.body}</p> : null}
+              {message.encrypted && readable.state === 'pending' ? (
+                <p className={styles.deleted}>Decrypting...</p>
+              ) : message.encrypted && readable.state === 'failed' ? (
+                <p className={styles.deleted}>
+                  This encrypted message cannot be opened on this device.
+                </p>
+              ) : readable.text ? (
+                <p className={styles.text}>{readable.text}</p>
+              ) : null}
             </>
           )}
 
@@ -282,7 +314,24 @@ function MessageItemBase({
             </ul>
           ) : null}
 
+          {!deleted && message.threadCount > 0 ? (
+            <button
+              type="button"
+              className={styles.threadLink}
+              onClick={() => onOpenThread?.(message)}
+            >
+              <MessagesSquare size={14} aria-hidden="true" />
+              {message.threadCount} {message.threadCount === 1 ? 'reply' : 'replies'}
+            </button>
+          ) : null}
+
           <p className={styles.meta}>
+            {message.expiresAt && !deleted ? (
+              <span className={styles.timer} title="This message will disappear">
+                <Timer size={12} aria-hidden="true" />
+                <span className="visually-hidden">Disappearing message</span>
+              </span>
+            ) : null}
             {message.editedAt && !deleted ? <span>edited</span> : null}
             <time dateTime={new Date(message.createdAt).toISOString()}>
               {formatMessageTime(message.createdAt)}

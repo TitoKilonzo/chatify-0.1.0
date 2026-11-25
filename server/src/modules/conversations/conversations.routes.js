@@ -7,6 +7,8 @@ import {
   memberParams,
   openDirectBody,
   preferencesBody,
+  disappearingBody,
+  encryptionBody,
   renameGroupBody,
   setRoleBody,
 } from './conversations.schemas.js';
@@ -22,6 +24,16 @@ export function createConversationsRouter({ controller, extraRouters = [] }) {
     '/:conversationId',
     validate({ params: conversationIdParams, body: renameGroupBody }),
     controller.rename,
+  );
+  router.put(
+    '/:conversationId/encryption',
+    validate({ params: conversationIdParams, body: encryptionBody }),
+    controller.setEncryption,
+  );
+  router.put(
+    '/:conversationId/disappearing',
+    validate({ params: conversationIdParams, body: disappearingBody }),
+    controller.setDisappearing,
   );
   router.put(
     '/:conversationId/preferences',

@@ -37,7 +37,7 @@ export function MessageSearchDialog({ open, onClose }) {
     const conversation = byId.get(message.conversationId);
     const section = conversation?.type === 'group' ? 'groups' : 'chats';
     onClose();
-    navigate(`/${section}/${message.conversationId}?m=${message.id}`);
+    navigate(`/${section}/${message.conversationId}?m=${message.threadRootId ?? message.id}`);
   }
 
   return (

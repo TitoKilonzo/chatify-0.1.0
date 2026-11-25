@@ -1,4 +1,4 @@
-import { forbidden, notFound, validationFailed } from '../../utils/errors.js';
+import { conflict, forbidden, notFound, validationFailed } from '../../utils/errors.js';
 import { toConversationSummary, toMemberEntry } from './conversations.serializer.js';
 
 export const MAX_GROUP_MEMBERS = 256;
@@ -11,6 +11,7 @@ export const MAX_GROUP_MEMBERS = 256;
 export function createConversationsService({
   conversationsRepository,
   messagesRepository,
+  keysRepository,
   usersRepository,
   events,
 }) {
@@ -146,6 +147,52 @@ export function createConversationsService({
       await requireGroupManager(conversationId, userId);
       await conversationsRepository.updateConversation(conversationId, { name });
       await notifyChanged(conversationId, 'renamed');
+      return this.get(userId, conversationId);
+    },
+
+    /**
+     * Turn end-to-end encryption on or off for a direct chat. Both people need a published key,
+     * otherwise nobody could read what is sent. Earlier messages keep the state they were sent in.
+     */
+    async setEncryption(userId, conversationId, enabled) {
+      await requireMember(conversationId, userId);
+      const conversation = await conversationsRepository.findById(conversationId);
+      if (conversation.type !== 'direct') {
+        throw validationFailed([
+          { path: 'conversationId', message: 'Encryption is available in direct chats' },
+        ]);
+      }
+      if (enabled) {
+        const memberIds = (await conversationsRepository.listMemberIds(conversationId)).sort(
+          (x, y) => Number(y === userId) - Number(x === userId),
+        );
+        for (const memberId of memberIds) {
+          if (!(await keysRepository.get(memberId))) {
+            throw conflict(
+              memberId === userId ? 'SELF_NO_KEY' : 'PEER_NO_KEY',
+              memberId === userId
+                ? 'Create your encryption key in Settings first'
+                : 'The other person has not set up encryption yet',
+            );
+          }
+        }
+      }
+      await conversationsRepository.updateConversation(conversationId, { encrypted: enabled });
+      await notifyChanged(conversationId, 'encryption');
+      return this.get(userId, conversationId);
+    },
+
+    /** Set how long new messages last. Direct chats: either person. Groups: owners and admins. */
+    async setDisappearing(userId, conversationId, seconds) {
+      const member = await requireMember(conversationId, userId);
+      const conversation = await conversationsRepository.findById(conversationId);
+      if (conversation.type === 'group' && member.role === 'member') {
+        throw forbidden('NOT_GROUP_ADMIN', 'Only group admins can do that');
+      }
+      await conversationsRepository.updateConversation(conversationId, {
+        disappearAfterSeconds: seconds === 0 ? null : seconds,
+      });
+      await notifyChanged(conversationId, 'disappearing');
       return this.get(userId, conversationId);
     },
 

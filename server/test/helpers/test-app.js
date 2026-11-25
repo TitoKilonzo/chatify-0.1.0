@@ -14,7 +14,7 @@ import { testEnv } from './test-env.js';
 const CHEAP_HASH_OPTIONS = { memoryCost: 1024, timeCost: 1, parallelism: 1 };
 
 /** Build an isolated app with its own migrated database. Call cleanup() in afterAll. */
-export async function createTestApp(envOverrides = {}, { storage, pushSender } = {}) {
+export async function createTestApp(envOverrides = {}, { storage, pushSender, smsOverride } = {}) {
   const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'chatify-uploads-'));
   const env = testEnv({ UPLOAD_DIR: uploadDir, ...envOverrides });
   const database = await createTestDatabase();
@@ -26,6 +26,7 @@ export async function createTestApp(envOverrides = {}, { storage, pushSender } =
     passwordHashOptions: CHEAP_HASH_OPTIONS,
     storage,
     pushSender,
+    smsOverride,
   });
   return {
     app,
@@ -95,6 +96,16 @@ export function createClient(app) {
       const csrf = await token();
       const req = agent.delete(url).set('X-CSRF-Token', csrf);
       return body === undefined ? req : req.send(body);
+    },
+    /** PATCH a raw binary body with extra headers (resumable upload chunks). */
+    patchRaw: async (url, buffer, headers = {}) => {
+      const csrf = await token();
+      return agent
+        .patch(url)
+        .set('X-CSRF-Token', csrf)
+        .set('Content-Type', 'application/octet-stream')
+        .set(headers)
+        .send(buffer);
     },
     /** Multipart upload of one in-memory file. method is 'post' or 'put'. */
     upload: async (

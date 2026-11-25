@@ -3,6 +3,9 @@ import { sendNotification } from 'web-push';
 const BODY_LENGTH = 120;
 
 function describe(message) {
+  if (message.encrypted) {
+    return 'New encrypted message';
+  }
   if (message.attachment) {
     const kind = message.attachment.kind;
     const label = kind === 'voice' ? 'a voice note' : kind === 'image' ? 'a photo' : 'a file';

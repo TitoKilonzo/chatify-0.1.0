@@ -19,6 +19,8 @@ import {
   useSetPreferences,
   useSetRole,
 } from './useConversations.js';
+import { DisappearingSetting } from './DisappearingSetting.jsx';
+import { EncryptionSetting } from './EncryptionSetting.jsx';
 import { UserPicker } from './UserPicker.jsx';
 import styles from './ConversationInfoDialog.module.css';
 
@@ -60,6 +62,10 @@ function Details({ conversation, meId, section, onClose }) {
           {conversation.archived ? 'Unarchive' : 'Archive'}
         </Button>
       </div>
+
+      <DisappearingSetting conversation={conversation} />
+
+      {isGroup ? null : <EncryptionSetting conversation={conversation} />}
 
       {isGroup ? (
         <GroupManagement

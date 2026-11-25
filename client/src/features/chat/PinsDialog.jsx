@@ -30,7 +30,9 @@ export function PinsDialog({ open, onClose, conversationId, names, onSelect }) {
                 <span className={styles.text}>
                   <span className={styles.title}>{names[message.senderId] ?? 'Former member'}</span>
                   <span className={styles.snippet}>
-                    {message.body || `Attachment (${message.attachment?.kind ?? 'file'})`}
+                    {message.encrypted
+                      ? 'Encrypted message'
+                      : message.body || `Attachment (${message.attachment?.kind ?? 'file'})`}
                   </span>
                   <span className={styles.when}>{formatDayLabel(message.createdAt)}</span>
                 </span>

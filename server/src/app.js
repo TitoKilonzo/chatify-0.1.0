@@ -1,6 +1,9 @@
 import path from 'node:path';
 import express from 'express';
 import helmet from 'helmet';
+import { createKeysRouter } from './modules/keys/keys.routes.js';
+import { createPhoneRouter } from './modules/phone/phone.routes.js';
+import { createUploadsRouter } from './modules/uploads/uploads.routes.js';
 import { createPushRouter } from './modules/push/push.routes.js';
 import { storageOrigin } from './storage/index.js';
 import cors from 'cors';
@@ -69,7 +72,15 @@ function contentSecurityPolicy(env) {
  * passwordHashOptions lets tests use cheap argon2 parameters. The composed container is exposed
  * on app.locals.container so the realtime layer shares the same services and event bus.
  */
-export function createApp({ env, logger, database, passwordHashOptions, storage, pushSender }) {
+export function createApp({
+  env,
+  logger,
+  database,
+  passwordHashOptions,
+  storage,
+  pushSender,
+  smsOverride,
+}) {
   const app = express();
   const container = createContainer({
     env,
@@ -78,6 +89,7 @@ export function createApp({ env, logger, database, passwordHashOptions, storage,
     passwordHashOptions,
     storageOverride: storage,
     pushSender,
+    smsOverride,
   });
   app.locals.container = container;
 
@@ -125,6 +137,7 @@ export function createApp({ env, logger, database, passwordHashOptions, storage,
   });
   const sendLimiter = createRateLimiter({ windowMs: 60_000, limit: 120 });
   const uploadLimiter = createRateLimiter({ windowMs: 10 * 60_000, limit: 60 });
+  const chunkLimiter = createRateLimiter({ windowMs: 60_000, limit: 600 });
   const searchLimiter = createRateLimiter({ windowMs: 60_000, limit: 60 });
 
   const fileUpload = createSingleFileUpload({ maxBytes: env.MAX_UPLOAD_BYTES });
@@ -149,6 +162,16 @@ export function createApp({ env, logger, database, passwordHashOptions, storage,
       requireAuth,
       credentialLimiter,
       refreshLimiter,
+    }),
+  );
+  app.use('/api/keys', createKeysRouter({ keysRepository: container.keysRepository, requireAuth }));
+  app.use(
+    '/api/phone',
+    createPhoneRouter({
+      phoneService: container.phoneService,
+      sessionCookies: container.sessionCookies,
+      requireAuth,
+      credentialLimiter,
     }),
   );
   app.use(
@@ -187,6 +210,15 @@ export function createApp({ env, logger, database, passwordHashOptions, storage,
       requireAuth,
       sendLimiter,
       searchLimiter,
+    }),
+  );
+  app.use(
+    '/api/uploads',
+    requireAuth,
+    createUploadsRouter({
+      uploadsService: container.uploadsService,
+      uploadLimiter,
+      chunkLimiter,
     }),
   );
   app.use(

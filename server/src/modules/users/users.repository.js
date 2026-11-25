@@ -18,6 +18,11 @@ export function createUsersRepository(db) {
       return row ?? null;
     },
 
+    async findByPhone(phone) {
+      const [row] = await db.select().from(users).where(eq(users.phone, phone)).limit(1);
+      return row ?? null;
+    },
+
     async findManyByIds(ids) {
       if (ids.length === 0) {
         return [];

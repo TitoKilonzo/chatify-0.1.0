@@ -23,6 +23,9 @@ export function previewText(conversation, meId) {
   if (last.deleted) {
     return `${prefix}Message deleted`;
   }
+  if (last.encrypted) {
+    return `${prefix}Encrypted message`;
+  }
   if (last.body) {
     return `${prefix}${last.body}`;
   }
@@ -79,7 +82,8 @@ export function applyIncomingMessage(list, message, { meId, isViewing }) {
           : {
               id: message.id,
               senderId: message.senderId,
-              body: message.body.slice(0, 140),
+              body: message.encrypted ? '' : message.body.slice(0, 140),
+              encrypted: Boolean(message.encrypted),
               deleted: false,
               attachmentName: message.attachment?.name ?? null,
               attachmentKind: message.attachment?.kind ?? null,

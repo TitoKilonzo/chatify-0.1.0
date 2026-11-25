@@ -1,4 +1,5 @@
 import { ApiError, api } from '../../lib/api.js';
+import { rememberPlain } from '../../lib/e2eeSession.js';
 import { applyIncomingMessage } from '../../lib/conversation-cache.js';
 import { createPending } from '../../lib/message-cache.js';
 import { addToOutbox, isPermanentFailure, loadOutbox, removeFromOutbox } from '../../lib/outbox.js';
@@ -65,12 +66,13 @@ const inflight = new Set();
  * they have no pending bubble to mark as failed and simply stay in the outbox for the next try.
  */
 async function transmit(pending, { tracked = true } = {}) {
-  const { conversationId, clientId, body, attachment, replyTo } = pending;
+  const { conversationId, clientId, body, attachment, replyTo, threadRootId } = pending;
   const payload = {
     clientId,
     body,
     attachmentId: attachment?.id,
     replyToId: replyTo?.id,
+    threadRootId: threadRootId ?? undefined,
   };
   if (inflight.has(clientId)) {
     return;
@@ -120,12 +122,34 @@ export async function sendMessage({
   body,
   attachment = null,
   replyTo = null,
+  threadRootId = null,
+  plain = null,
 }) {
   const clientId = crypto.randomUUID();
-  const pending = createPending({ clientId, conversationId, senderId, body, attachment, replyTo });
+  // For an encrypted chat body is already ciphertext; the readable text stays in memory only.
+  if (plain !== null) {
+    rememberPlain(clientId, plain);
+  }
+  const pending = createPending({
+    clientId,
+    conversationId,
+    senderId,
+    body,
+    attachment,
+    replyTo,
+    threadRootId,
+    encrypted: plain !== null,
+  });
   store().addPending(pending);
   // Written before the first attempt so a reload or closed tab cannot lose the message.
-  addToOutbox(senderId, { clientId, conversationId, body, attachment, replyTo });
+  addToOutbox(senderId, {
+    clientId,
+    conversationId,
+    body,
+    attachment,
+    replyTo,
+    threadRootId,
+  });
   await transmit(pending);
 }
 
@@ -159,6 +183,7 @@ export function flushOutbox(userId) {
         body: entry.body,
         attachment: entry.attachment,
         replyTo: entry.replyTo,
+        threadRootId: entry.threadRootId,
       }),
       { tracked: false },
     );
@@ -302,4 +327,17 @@ export async function loadUntil(conversationId, messageId, maxPages = 50) {
     await loadOlder(conversationId);
   }
   return Boolean(has());
+}
+
+/** Fetch a thread's root and replies into the cache (all pages). */
+export async function loadThread(rootId) {
+  let after = 0;
+  for (let page = 0; page < 20; page += 1) {
+    const data = await api.get(`/messages/${rootId}/thread?after=${after}&limit=100`);
+    store().upsert([data.root, ...data.messages]);
+    if (!data.hasMore || data.messages.length === 0) {
+      return;
+    }
+    after = data.messages[data.messages.length - 1].id;
+  }
 }

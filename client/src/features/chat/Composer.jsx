@@ -2,15 +2,19 @@ import { useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Mic, Paperclip, Send, Trash2, X } from 'lucide-react';
 import { ApiError, api } from '../../lib/api.js';
 import { attachmentLabel, formatBytes, formatDuration } from '../../lib/format.js';
+import { cancelResumable, uploadResumable } from '../../lib/resumable.js';
 import { getSocket } from '../../lib/socket.js';
 import { useDraftStore, useReplyStore } from '../../stores/liveStores.js';
 import { IconButton } from '../../components/ui/IconButton.jsx';
+import { useE2ee } from './E2eeContext.jsx';
 import { sendMessage } from './messageActions.js';
 import { useVoiceRecorder, voiceSupported } from './voiceRecorder.js';
 import styles from './Composer.module.css';
 
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const MAX_BODY = 4000;
+// Ciphertext grows by about a third and must fit the server limit even for multi-byte text.
+const MAX_ENCRYPTED_BODY = 1400;
 const COUNTER_FROM = 3500;
 const MAX_TEXTAREA_PX = 160;
 const TYPING_REPEAT_MS = 2000;
@@ -30,6 +34,9 @@ export function Composer({ conversationId, meId, names, onSent, ref }) {
   const fileInputRef = useRef(null);
   const lastTyping = useRef(0);
   const controllerRef = useRef(null);
+  const e2ee = useE2ee();
+  const sealed = e2ee.active;
+  const maxBody = sealed ? MAX_ENCRYPTED_BODY : MAX_BODY;
   const voice = useVoiceRecorder();
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [voiceError, setVoiceError] = useState(null);
@@ -59,32 +66,44 @@ export function Composer({ conversationId, meId, names, onSent, ref }) {
   }
 
   async function addFile(file) {
+    if (sealed) {
+      return;
+    }
     if (!file) {
       return;
     }
-    if (file.size > MAX_UPLOAD_BYTES) {
-      setUpload({
-        file,
-        status: 'error',
-        progress: 0,
-        error: `Files can be at most ${formatBytes(MAX_UPLOAD_BYTES)}`,
-      });
-      return;
+    const large = file.size > MAX_UPLOAD_BYTES;
+    if (large) {
+      // Large files go through the resumable path; its limit is set by the server.
+      try {
+        const limits = await api.get('/uploads/limits');
+        if (file.size > limits.maxBytes) {
+          setUpload({
+            file,
+            status: 'error',
+            progress: 0,
+            error: `Files can be at most ${formatBytes(limits.maxBytes)}`,
+          });
+          return;
+        }
+      } catch (error) {
+        setUpload({ file, status: 'error', progress: 0, error: error.message });
+        return;
+      }
     }
     controllerRef.current?.abort();
     const controller = new AbortController();
     controllerRef.current = controller;
-    setUpload({ file, status: 'uploading', progress: 0 });
+    setUpload({ file, status: 'uploading', progress: 0, resumable: large });
+    const onProgress = (progress) =>
+      setUpload((current) => (current?.file === file ? { ...current, progress } : current));
     try {
-      const data = await api.upload('/attachments', file, {
-        signal: controller.signal,
-        onProgress: (progress) =>
-          setUpload((current) => (current?.file === file ? { ...current, progress } : current)),
-      });
+      const attachment = large
+        ? await uploadResumable(file, { signal: controller.signal, onProgress })
+        : (await api.upload('/attachments', file, { signal: controller.signal, onProgress }))
+            .attachment;
       setUpload((current) =>
-        current?.file === file
-          ? { file, status: 'ready', progress: 1, attachment: data.attachment }
-          : current,
+        current?.file === file ? { file, status: 'ready', progress: 1, attachment } : current,
       );
     } catch (error) {
       if (error instanceof ApiError && error.code === 'ABORTED') {
@@ -92,18 +111,18 @@ export function Composer({ conversationId, meId, names, onSent, ref }) {
       }
       setUpload((current) =>
         current?.file === file
-          ? { file, status: 'error', progress: 0, error: error.message }
+          ? {
+              file,
+              status: 'error',
+              progress: 0,
+              error: large
+                ? `${error.message} Choose the file again to continue where it stopped.`
+                : error.message,
+            }
           : current,
       );
     }
   }
-
-  // Choosing Reply moves focus into the field so the answer can be typed straight away.
-  useEffect(() => {
-    if (reply) {
-      textareaRef.current?.focus();
-    }
-  }, [reply]);
 
   useImperativeHandle(ref, () => ({
     addFile,
@@ -112,6 +131,9 @@ export function Composer({ conversationId, meId, names, onSent, ref }) {
 
   function removeUpload() {
     controllerRef.current?.abort();
+    if (upload?.resumable) {
+      cancelResumable(upload.file);
+    }
     setUpload(null);
   }
 
@@ -144,19 +166,39 @@ export function Composer({ conversationId, meId, names, onSent, ref }) {
 
   const uploading = upload?.status === 'uploading';
   const body = text.trim();
-  const canSend = !uploading && (body.length > 0 || upload?.status === 'ready');
-  const showMic = !canSend && !uploading && voiceSupported();
+  const canSend = sealed
+    ? e2ee.ready && body.length > 0
+    : !uploading && (body.length > 0 || upload?.status === 'ready');
+  const showMic = !sealed && !canSend && !uploading && voiceSupported();
+  const blockedReason =
+    sealed && !e2ee.ready
+      ? e2ee.reason === 'peer-no-key'
+        ? 'The other person has not set up encryption keys yet.'
+        : e2ee.reason === 'no-local-key'
+          ? 'This device has no encryption key. Open Settings to restore or create one.'
+          : 'Preparing encryption...'
+      : null;
   const recording = voice.state === 'recording';
 
-  function submit() {
+  async function submit() {
     if (!canSend) {
       return;
+    }
+    let outgoing = body;
+    if (sealed) {
+      try {
+        outgoing = await e2ee.encrypt(body);
+      } catch {
+        setVoiceError('Could not encrypt this message.');
+        return;
+      }
     }
     sendMessage({
       conversationId,
       senderId: meId,
-      body,
-      attachment: upload?.status === 'ready' ? upload.attachment : null,
+      body: outgoing,
+      plain: sealed ? body : null,
+      attachment: !sealed && upload?.status === 'ready' ? upload.attachment : null,
       replyTo: reply,
     });
     setReply(conversationId, null);
@@ -213,7 +255,9 @@ export function Composer({ conversationId, meId, names, onSent, ref }) {
               {reply.senderId === meId ? 'yourself' : (names?.[reply.senderId] ?? 'a message')}
             </span>
             <span className={styles.replyText}>
-              {reply.body || attachmentLabel(reply.attachmentKind)}
+              {reply.encrypted
+                ? 'Encrypted message'
+                : reply.body || attachmentLabel(reply.attachmentKind)}
             </span>
           </div>
           <IconButton
@@ -288,11 +332,13 @@ export function Composer({ conversationId, meId, names, onSent, ref }) {
               event.target.value = '';
             }}
           />
-          <IconButton
-            label="Attach a file"
-            icon={Paperclip}
-            onClick={() => fileInputRef.current?.click()}
-          />
+          {sealed ? null : (
+            <IconButton
+              label="Attach a file"
+              icon={Paperclip}
+              onClick={() => fileInputRef.current?.click()}
+            />
+          )}
           <label htmlFor={`composer-${conversationId}`} className="visually-hidden">
             Message
           </label>
@@ -301,8 +347,8 @@ export function Composer({ conversationId, meId, names, onSent, ref }) {
             ref={textareaRef}
             className={styles.field}
             rows={1}
-            maxLength={MAX_BODY}
-            placeholder="Write a message"
+            maxLength={maxBody}
+            placeholder={sealed ? 'Write an encrypted message' : 'Write a message'}
             value={text}
             onChange={onChange}
             onKeyDown={onKeyDown}
@@ -322,9 +368,14 @@ export function Composer({ conversationId, meId, names, onSent, ref }) {
           )}
         </div>
       )}
-      {text.length >= COUNTER_FROM ? (
+      {blockedReason ? (
+        <p className={styles.counter} role="status">
+          {blockedReason}
+        </p>
+      ) : null}
+      {text.length >= (sealed ? maxBody - 200 : COUNTER_FROM) ? (
         <p className={styles.counter} aria-live="polite">
-          {text.length} / {MAX_BODY}
+          {text.length} / {maxBody}
         </p>
       ) : null}
     </form>

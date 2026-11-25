@@ -27,6 +27,8 @@ export function toConversationSummary({
     unreadCount,
     archived: Boolean(member.archivedAt),
     muted: Boolean(member.mutedAt),
+    disappearAfterSeconds: conversation.disappearAfterSeconds ?? null,
+    encrypted: conversation.encrypted,
     lastMessage: lastMessage ? toLastMessage(lastMessage) : null,
     lastMessageAt: conversation.lastMessageAt,
     createdAt: conversation.createdAt,

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import { uniqueViolation } from '../../db/errors.js';
 import {
   attachments,
@@ -14,6 +14,9 @@ const withAttachment = (db) =>
     .select({ message: messages, attachment: attachments })
     .from(messages)
     .leftJoin(attachments, eq(attachments.id, messages.attachmentId));
+
+/** Messages past their expiry are hidden at once, even before the purge job removes them. */
+const live = () => or(isNull(messages.expiresAt), gt(messages.expiresAt, new Date()));
 
 export function createMessagesRepository(db) {
   async function findBySenderClient(senderId, clientId) {
@@ -38,6 +41,31 @@ export function createMessagesRepository(db) {
       }
       const rows = await withAttachment(db).where(inArray(messages.id, ids));
       return new Map(rows.map((row) => [row.message.id, row]));
+    },
+
+    /** Reply counts and the time of the latest reply, for a set of thread roots. */
+    async threadStats(rootIds) {
+      if (rootIds.length === 0) {
+        return new Map();
+      }
+      const rows = await db
+        .select({
+          rootId: messages.threadRootId,
+          count: sql`count(*)`.mapWith(Number),
+          lastAt: sql`max(${messages.createdAt})`.mapWith(Number),
+        })
+        .from(messages)
+        .where(and(inArray(messages.threadRootId, rootIds), isNull(messages.deletedAt), live()))
+        .groupBy(messages.threadRootId);
+      return new Map(rows.map((row) => [row.rootId, row]));
+    },
+
+    /** Replies in one thread, oldest first. */
+    async listThread(rootId, { afterId = 0, limit }) {
+      return withAttachment(db)
+        .where(and(eq(messages.threadRootId, rootId), gt(messages.id, afterId), live()))
+        .orderBy(asc(messages.id))
+        .limit(limit + 1);
     },
 
     async reactionsFor(messageIds) {
@@ -93,6 +121,7 @@ export function createMessagesRepository(db) {
             eq(messages.conversationId, conversationId),
             isNotNull(messages.pinnedAt),
             isNull(messages.deletedAt),
+            live(),
           ),
         );
       return row.count;
@@ -105,6 +134,7 @@ export function createMessagesRepository(db) {
             eq(messages.conversationId, conversationId),
             isNotNull(messages.pinnedAt),
             isNull(messages.deletedAt),
+            live(),
           ),
         )
         .orderBy(desc(messages.pinnedAt), desc(messages.id));
@@ -118,6 +148,8 @@ export function createMessagesRepository(db) {
       const conditions = [
         eq(conversationMembers.userId, userId),
         isNull(messages.deletedAt),
+        live(),
+        eq(messages.encrypted, false),
         sql`${messages.body} LIKE ${pattern} ESCAPE '\\'`,
       ];
       if (conversationId) {
@@ -144,7 +176,18 @@ export function createMessagesRepository(db) {
      * A repeated (senderId, clientId) returns the original row with duplicate: true, which makes
      * client retries after a lost ack idempotent.
      */
-    async create({ conversationId, senderId, clientId, body, attachmentId, replyToId, forwarded }) {
+    async create({
+      conversationId,
+      senderId,
+      clientId,
+      body,
+      attachmentId,
+      replyToId,
+      forwarded,
+      expiresAt,
+      threadRootId,
+      encrypted,
+    }) {
       try {
         const id = await db.transaction(async (tx) => {
           const [row] = await tx
@@ -157,6 +200,9 @@ export function createMessagesRepository(db) {
               attachmentId: attachmentId ?? null,
               replyToId: replyToId ?? null,
               forwarded: Boolean(forwarded),
+              expiresAt: expiresAt ?? null,
+              threadRootId: threadRootId ?? null,
+              encrypted: Boolean(encrypted),
             })
             .returning({ id: messages.id, createdAt: messages.createdAt });
           await tx
@@ -185,7 +231,12 @@ export function createMessagesRepository(db) {
      * client already holds. Fetches limit + 1 rows so the caller can tell whether more exist.
      */
     async listBefore(conversationId, { cursor, limit }) {
-      const conditions = [eq(messages.conversationId, conversationId)];
+      // Thread replies live in their thread, not in the main history.
+      const conditions = [
+        eq(messages.conversationId, conversationId),
+        isNull(messages.threadRootId),
+        live(),
+      ];
       if (cursor) {
         const at = new Date(cursor.createdAt);
         conditions.push(
@@ -214,7 +265,7 @@ export function createMessagesRepository(db) {
           ),
         )
         .leftJoin(attachments, eq(attachments.id, messages.attachmentId))
-        .where(sql`${messages.id} > ${afterId}`)
+        .where(and(sql`${messages.id} > ${afterId}`, live()))
         .orderBy(asc(messages.id))
         .limit(limit + 1);
     },
@@ -227,7 +278,7 @@ export function createMessagesRepository(db) {
       const latest = await db
         .select({ id: sql`max(${messages.id})`.mapWith(Number) })
         .from(messages)
-        .where(inArray(messages.conversationId, conversationIds))
+        .where(and(inArray(messages.conversationId, conversationIds), live()))
         .groupBy(messages.conversationId);
       if (latest.length === 0) {
         return new Map();
@@ -239,6 +290,20 @@ export function createMessagesRepository(db) {
         ),
       );
       return new Map(rows.map((row) => [row.message.conversationId, row]));
+    },
+
+    /** Messages whose time is up, oldest first, with their attachments. */
+    async listExpired(nowDate, limit) {
+      return withAttachment(db)
+        .where(and(isNotNull(messages.expiresAt), lte(messages.expiresAt, nowDate)))
+        .orderBy(asc(messages.expiresAt))
+        .limit(limit);
+    },
+
+    async deleteMany(ids) {
+      if (ids.length > 0) {
+        await db.delete(messages).where(inArray(messages.id, ids));
+      }
     },
 
     async latestId(conversationId) {

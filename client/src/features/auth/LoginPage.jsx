@@ -1,17 +1,20 @@
 import { useState } from 'react';
-import { Lock, User } from 'lucide-react';
+import { Lock, Phone, User } from 'lucide-react';
 import { Alert } from '../../components/ui/Alert.jsx';
 import { Button } from '../../components/ui/Button.jsx';
 import { Input } from '../../components/ui/Input.jsx';
 import { PasswordInput } from '../../components/ui/PasswordInput.jsx';
 import { useFormValues } from '../../hooks/useFormValues.js';
 import { AuthLayout } from './AuthLayout.jsx';
+import { PhoneSignIn, usePhoneEnabled } from './PhoneSignIn.jsx';
 import { fieldErrorsFrom, validateLogin } from './validation.js';
 import { useLogin } from './useSession.js';
 import styles from './forms.module.css';
 
 export function LoginPage() {
   const login = useLogin();
+  const phoneEnabled = usePhoneEnabled();
+  const [usePhone, setUsePhone] = useState(false);
   const [values, handleChange] = useFormValues({ identifier: '', password: '' });
   const [clientErrors, setClientErrors] = useState({});
 
@@ -49,34 +52,45 @@ export function LoginPage() {
       footerText="New to Chatify?"
       footerLink={{ to: '/register', label: 'Create an account' }}
     >
-      <form className={styles.form} onSubmit={onSubmit} noValidate>
-        {formError ? <Alert>{formError}</Alert> : null}
-        <Input
-          label="Email or username"
-          leadingIcon={User}
-          name="identifier"
-          value={values.identifier}
-          onChange={onChange}
-          error={errors.identifier}
-          autoComplete="username"
-          autoCapitalize="none"
-          spellCheck={false}
-          required
-        />
-        <PasswordInput
-          label="Password"
-          leadingIcon={Lock}
-          name="password"
-          value={values.password}
-          onChange={onChange}
-          error={errors.password}
-          autoComplete="current-password"
-          required
-        />
-        <Button type="submit" variant="primary" loading={login.isPending}>
-          Sign in
-        </Button>
-      </form>
+      {usePhone ? (
+        <PhoneSignIn onBack={() => setUsePhone(false)} />
+      ) : (
+        <>
+          <form className={styles.form} onSubmit={onSubmit} noValidate>
+            {formError ? <Alert>{formError}</Alert> : null}
+            <Input
+              label="Email or username"
+              leadingIcon={User}
+              name="identifier"
+              value={values.identifier}
+              onChange={onChange}
+              error={errors.identifier}
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
+              required
+            />
+            <PasswordInput
+              label="Password"
+              leadingIcon={Lock}
+              name="password"
+              value={values.password}
+              onChange={onChange}
+              error={errors.password}
+              autoComplete="current-password"
+              required
+            />
+            <Button type="submit" variant="primary" loading={login.isPending}>
+              Sign in
+            </Button>
+          </form>
+          {phoneEnabled ? (
+            <Button variant="ghost" leadingIcon={Phone} onClick={() => setUsePhone(true)}>
+              Sign in with a phone number
+            </Button>
+          ) : null}
+        </>
+      )}
     </AuthLayout>
   );
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Info, Paperclip, Pin } from 'lucide-react';
+import { ArrowLeft, Info, Lock, Paperclip, Pin } from 'lucide-react';
 import { Alert } from '../../components/ui/Alert.jsx';
 import { Avatar } from '../../components/ui/Avatar.jsx';
 import { Button } from '../../components/ui/Button.jsx';
@@ -13,8 +13,10 @@ import { effectivePresence, usePresenceStore, useTypingStore } from '../../store
 import { useSession } from '../auth/useSession.js';
 import { Composer } from './Composer.jsx';
 import { ConversationInfoDialog } from './ConversationInfoDialog.jsx';
+import { E2eeProvider } from './E2eeContext.jsx';
 import { ForwardDialog } from './ForwardDialog.jsx';
 import { loadLatest, loadUntil, markRead } from './messageActions.js';
+import { ThreadDialog } from './ThreadDialog.jsx';
 import { PinsDialog } from './PinsDialog.jsx';
 import { MessageList } from './MessageList.jsx';
 import { useConversationDetail } from './useConversations.js';
@@ -63,6 +65,12 @@ function OpenConversation({ conversation, meId, section }) {
   const [showInfo, setShowInfo] = useState(false);
   const [showPins, setShowPins] = useState(false);
   const [forwarding, setForwarding] = useState(null);
+  const [threadRoot, setThreadRoot] = useState(null);
+  // Thread replies are shown in their thread, not in the main history.
+  const visibleMessages = useMemo(
+    () => state.messages.filter((message) => !message.threadRootId),
+    [state.messages],
+  );
   const [highlightId, setHighlightId] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const targetParam = Number(searchParams.get('m')) || null;
@@ -167,88 +175,98 @@ function OpenConversation({ conversation, meId, section }) {
   }
 
   return (
-    // The drop target is a progressive enhancement: the attach button is the accessible path.
-    <div
-      className={styles.pane}
-      onDragEnter={onDragEnter}
-      onDragLeave={onDragLeave}
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={onDrop}
-    >
-      <Header
-        conversation={conversation}
-        names={names}
-        onBack={() => navigate(`/${section}`)}
-        onInfo={() => setShowInfo(true)}
-        onPins={() => setShowPins(true)}
-      />
+    <E2eeProvider conversation={conversation} meId={meId}>
+      {/* The drop target is a progressive enhancement: the attach button is the accessible path. */}
+      <div
+        className={styles.pane}
+        onDragEnter={onDragEnter}
+        onDragLeave={onDragLeave}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={onDrop}
+      >
+        <Header
+          conversation={conversation}
+          names={names}
+          onBack={() => navigate(`/${section}`)}
+          onInfo={() => setShowInfo(true)}
+          onPins={() => setShowPins(true)}
+        />
 
-      <div className={styles.body}>
-        {!state.loaded && state.error ? (
-          <div className={styles.status}>
-            <Alert>{state.error.message}</Alert>
-            <Button onClick={() => loadLatest(conversationId)}>Try again</Button>
-          </div>
-        ) : !state.loaded ? (
-          <div className={styles.status} aria-busy="true">
-            <p className={styles.muted}>Loading messages...</p>
-          </div>
-        ) : state.messages.length === 0 ? (
-          <div className={styles.status}>
-            <p className={styles.muted}>No messages yet. Say hello.</p>
-          </div>
-        ) : (
-          <MessageList
-            ref={listRef}
-            conversationId={conversationId}
-            messages={state.messages}
-            prependCount={state.prependCount}
-            loadingOlder={state.loading}
-            meId={meId}
-            isGroup={isGroup}
-            names={names}
-            canPin={canPin}
-            highlightId={highlightId}
-            onForward={setForwarding}
-            onJumpTo={jumpTo}
-          />
-        )}
-        {dragging ? (
-          <div className={styles.drop} aria-hidden="true">
-            <Paperclip size={24} />
-            <span>Drop a file to attach it</span>
-          </div>
-        ) : null}
+        <div className={styles.body}>
+          {!state.loaded && state.error ? (
+            <div className={styles.status}>
+              <Alert>{state.error.message}</Alert>
+              <Button onClick={() => loadLatest(conversationId)}>Try again</Button>
+            </div>
+          ) : !state.loaded ? (
+            <div className={styles.status} aria-busy="true">
+              <p className={styles.muted}>Loading messages...</p>
+            </div>
+          ) : visibleMessages.length === 0 ? (
+            <div className={styles.status}>
+              <p className={styles.muted}>No messages yet. Say hello.</p>
+            </div>
+          ) : (
+            <MessageList
+              ref={listRef}
+              conversationId={conversationId}
+              messages={visibleMessages}
+              prependCount={state.prependCount}
+              loadingOlder={state.loading}
+              meId={meId}
+              isGroup={isGroup}
+              names={names}
+              canPin={canPin}
+              highlightId={highlightId}
+              onForward={setForwarding}
+              onJumpTo={jumpTo}
+              onOpenThread={setThreadRoot}
+            />
+          )}
+          {dragging ? (
+            <div className={styles.drop} aria-hidden="true">
+              <Paperclip size={24} />
+              <span>Drop a file to attach it</span>
+            </div>
+          ) : null}
+        </div>
+
+        <Composer
+          ref={composerRef}
+          conversationId={conversationId}
+          meId={meId}
+          names={names}
+          onSent={() => listRef.current?.scrollToBottom()}
+        />
+
+        <PinsDialog
+          open={showPins}
+          onClose={() => setShowPins(false)}
+          conversationId={conversationId}
+          names={names}
+          onSelect={(messageId) => {
+            setShowPins(false);
+            jumpTo(messageId);
+          }}
+        />
+        <ThreadDialog
+          root={threadRoot}
+          conversationId={conversationId}
+          meId={meId}
+          names={names}
+          onClose={() => setThreadRoot(null)}
+        />
+        <ForwardDialog message={forwarding} onClose={() => setForwarding(null)} />
+
+        <ConversationInfoDialog
+          open={showInfo}
+          onClose={() => setShowInfo(false)}
+          conversation={conversation}
+          meId={meId}
+          section={section}
+        />
       </div>
-
-      <Composer
-        ref={composerRef}
-        conversationId={conversationId}
-        meId={meId}
-        names={names}
-        onSent={() => listRef.current?.scrollToBottom()}
-      />
-
-      <PinsDialog
-        open={showPins}
-        onClose={() => setShowPins(false)}
-        conversationId={conversationId}
-        names={names}
-        onSelect={(messageId) => {
-          setShowPins(false);
-          jumpTo(messageId);
-        }}
-      />
-      <ForwardDialog message={forwarding} onClose={() => setForwarding(null)} />
-
-      <ConversationInfoDialog
-        open={showInfo}
-        onClose={() => setShowInfo(false)}
-        conversation={conversation}
-        meId={meId}
-        section={section}
-      />
-    </div>
+    </E2eeProvider>
   );
 }
 
@@ -284,7 +302,12 @@ function Header({ conversation, names, onBack, onInfo, onPins }) {
         decorative
       />
       <div className={styles.titles}>
-        <h1 className={styles.title}>{title}</h1>
+        <h1 className={styles.title}>
+          {conversation.encrypted ? (
+            <Lock size={14} aria-label="End-to-end encrypted" className={styles.lock} />
+          ) : null}
+          {title}
+        </h1>
         <p className={styles.subtitle} aria-live="polite">
           {subtitle}
         </p>

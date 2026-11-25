@@ -2,6 +2,9 @@ import { InstallButton } from '../../components/InstallButton.jsx';
 import { useInstallState } from '../../lib/pwa.js';
 import { useSession } from '../auth/useSession.js';
 import { SHORTCUTS } from '../chat/useShortcuts.js';
+import { EncryptionKeysSection } from './EncryptionKeysSection.jsx';
+import { DataSaverSection } from './DataSaverSection.jsx';
+import { PhoneSection } from './PhoneSection.jsx';
 import { NotificationsSection } from './NotificationsSection.jsx';
 import { PasswordForm } from './PasswordForm.jsx';
 import { ProfileForm } from './ProfileForm.jsx';
@@ -16,7 +19,10 @@ export function SettingsPage() {
       <h1 className={styles.title}>Settings</h1>
       <ProfileForm user={user} />
       <PasswordForm />
+      <PhoneSection />
       <NotificationsSection />
+      <EncryptionKeysSection userId={user.id} />
+      <DataSaverSection />
       <section className={styles.section} aria-labelledby="install-heading">
         <h2 id="install-heading" className={styles.heading}>
           Install app

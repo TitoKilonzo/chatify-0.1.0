@@ -142,6 +142,11 @@ export function useRealtime(meId) {
       queryClient.invalidateQueries({ queryKey: conversationsKey });
     });
 
+    socket.on('message:expired', ({ conversationId, messageIds }) => {
+      messages().expire(conversationId, messageIds);
+      queryClient.invalidateQueries({ queryKey: conversationsKey });
+    });
+
     socket.on('message:deleted', ({ conversationId, messageId }) => {
       messages().deleted(conversationId, messageId);
       queryClient.invalidateQueries({ queryKey: conversationsKey });
@@ -193,7 +198,11 @@ export function useRealtime(meId) {
     setStatus('connecting');
     socket.connect();
 
+    // Disappearing messages leave the screen on time, even if the server notice is delayed.
+    const expiryTimer = setInterval(() => messages().dropExpired(), 5000);
+
     return () => {
+      clearInterval(expiryTimer);
       window.removeEventListener('online', handleOnline);
       stopped = true;
       clearTimeout(retryTimer);

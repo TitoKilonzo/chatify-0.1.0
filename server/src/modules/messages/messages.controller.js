@@ -85,6 +85,16 @@ export function createMessagesController({ messagesService }) {
       res.status(201).json({ messages });
     },
 
+    async thread(req, res) {
+      const { after, limit } = req.validated.query;
+      res.json(
+        await messagesService.thread(req.auth.userId, req.validated.params.messageId, {
+          afterId: after,
+          limit,
+        }),
+      );
+    },
+
     async search(req, res) {
       res.json(await messagesService.search(req.auth.userId, req.validated.query));
     },

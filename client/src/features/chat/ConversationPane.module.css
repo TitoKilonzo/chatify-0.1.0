@@ -102,3 +102,8 @@
     display: block;
   }
 }
+
+.lock {
+  margin-right: var(--space-1);
+  vertical-align: baseline;
+}

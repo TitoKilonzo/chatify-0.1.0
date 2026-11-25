@@ -146,3 +146,23 @@ export function useUserSearch(query) {
     queryFn: async () => (await api.get(`/users?q=${encodeURIComponent(trimmed)}`)).users,
   });
 }
+
+/** How long new messages last in a conversation: seconds, or 0 for "keep". */
+export function useSetDisappearing(id) {
+  const cache = useCacheDetail();
+  return useMutation({
+    mutationFn: async (seconds) =>
+      (await api.put(`/conversations/${id}/disappearing`, { seconds })).conversation,
+    onSuccess: cache,
+  });
+}
+
+/** Turn end-to-end encryption on or off for a direct conversation. */
+export function useSetEncryption(id) {
+  const cache = useCacheDetail();
+  return useMutation({
+    mutationFn: async (enabled) =>
+      (await api.put(`/conversations/${id}/encryption`, { enabled })).conversation,
+    onSuccess: cache,
+  });
+}

@@ -1,4 +1,4 @@
-import { createReadStream } from 'node:fs';
+import { constants, createReadStream } from 'node:fs';
 import { copyFile, mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { assertValidKey } from './keys.js';
@@ -28,6 +28,13 @@ export function createLocalStorage({ baseDir }) {
       const target = resolveKey(key);
       await mkdir(path.dirname(target), { recursive: true });
       await writeFile(target, buffer, { flag: 'wx', mode: 0o640 });
+    },
+
+    /** Store a file that is already on local disk (large uploads), without loading it in memory. */
+    async putFile(key, filePath) {
+      const target = resolveKey(key);
+      await mkdir(path.dirname(target), { recursive: true });
+      await copyFile(filePath, target, constants.COPYFILE_EXCL);
     },
 
     async get(key) {

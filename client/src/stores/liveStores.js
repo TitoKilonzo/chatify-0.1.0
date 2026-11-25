@@ -95,7 +95,9 @@ export const useReplyStore = create((set) => ({
           [conversationId]: {
             id: message.id,
             senderId: message.senderId,
-            body: message.body.slice(0, 140),
+            // Ciphertext is not quoted; the preview just says the message is encrypted.
+            body: message.encrypted ? '' : message.body.slice(0, 140),
+            encrypted: Boolean(message.encrypted),
             deleted: false,
             attachmentKind: message.attachment?.kind ?? null,
           },

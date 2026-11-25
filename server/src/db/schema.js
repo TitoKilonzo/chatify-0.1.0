@@ -38,6 +38,9 @@ export const users = sqliteTable(
     email: text('email').notNull(),
     displayName: text('display_name').notNull(),
     passwordHash: text('password_hash').notNull(),
+    // E.164 number, set once the person proves they own it with a code sent by SMS.
+    phone: text('phone'),
+    phoneVerifiedAt: integer('phone_verified_at', { mode: 'timestamp_ms' }),
     avatarPath: text('avatar_path'),
     status: text('status', { enum: ['online', 'offline'] })
       .notNull()
@@ -51,9 +54,45 @@ export const users = sqliteTable(
   (table) => [
     uniqueIndex('users_username_unique').on(table.username),
     uniqueIndex('users_email_unique').on(table.email),
+    uniqueIndex('users_phone_unique').on(table.phone),
     check('users_status_valid', sql`${table.status} IN ('online', 'offline')`),
   ],
 );
+
+/** One-time codes sent by SMS to sign in with, or to attach a number to an account. */
+export const phoneCodes = sqliteTable(
+  'phone_codes',
+  {
+    id: id(),
+    phone: text('phone').notNull(),
+    purpose: text('purpose', { enum: ['login', 'link'] }).notNull(),
+    // HMAC of the code, never the code itself.
+    codeHash: text('code_hash').notNull(),
+    userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    attempts: integer('attempts').notNull().default(0),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index('phone_codes_phone_idx').on(table.phone, table.createdAt),
+    index('phone_codes_user_id_idx').on(table.userId),
+  ],
+);
+
+/**
+ * Public encryption key of a user, and optionally a backup of the private key that was locked with
+ * a passphrase on the device before upload. The server cannot open the backup.
+ */
+export const userKeys = sqliteTable('user_keys', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  publicKey: text('public_key').notNull(),
+  backup: text('backup'),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
 
 export const refreshTokens = sqliteTable(
   'refresh_tokens',
@@ -102,6 +141,29 @@ export const attachments = sqliteTable(
   ],
 );
 
+/** A large upload in progress: bytes arrive in chunks and can resume after a dropped connection. */
+export const uploadSessions = sqliteTable(
+  'upload_sessions',
+  {
+    id: id(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    // Bytes received so far; the next chunk must start here.
+    offsetBytes: integer('offset_bytes').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    index('upload_sessions_user_id_idx').on(table.userId),
+    index('upload_sessions_updated_at_idx').on(table.updatedAt),
+  ],
+);
+
 export const conversations = sqliteTable(
   'conversations',
   {
@@ -115,6 +177,10 @@ export const conversations = sqliteTable(
     // Sorted pair of user ids joined by a colon. Unique, so two users have at most one direct chat.
     directKey: text('direct_key'),
     // Denormalized activity timestamp so the conversation list sorts without scanning messages.
+    // Messages sent from now on vanish this many seconds after sending. Null means they are kept.
+    disappearAfterSeconds: integer('disappear_after_seconds'),
+    // End-to-end encryption for a direct chat: messages are sent as ciphertext the server cannot read.
+    encrypted: integer('encrypted', { mode: 'boolean' }).notNull().default(false),
     lastMessageAt: integer('last_message_at', { mode: 'timestamp_ms' })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -147,10 +213,16 @@ export const messages = sqliteTable(
     attachmentId: text('attachment_id').references(() => attachments.id, { onDelete: 'set null' }),
     // The message this one replies to, in the same conversation.
     replyToId: integer('reply_to_id').references(() => messages.id, { onDelete: 'set null' }),
+    // Group threads: the top-level message this one answers inside a thread (one level only).
+    threadRootId: integer('thread_root_id').references(() => messages.id, { onDelete: 'set null' }),
+    // Fixed when the message is sent: its body is ciphertext, whatever the chat does later.
+    encrypted: integer('encrypted', { mode: 'boolean' }).notNull().default(false),
     forwarded: integer('forwarded', { mode: 'boolean' }).notNull().default(false),
     pinnedAt: integer('pinned_at', { mode: 'timestamp_ms' }),
     // Informational (who pinned it), so no foreign key.
     pinnedBy: text('pinned_by'),
+    // Set from the conversation timer when the message is sent; the purge job removes it after this.
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }),
     editedAt: integer('edited_at', { mode: 'timestamp_ms' }),
     deletedAt: integer('deleted_at', { mode: 'timestamp_ms' }),
     createdAt: createdAt(),
@@ -165,6 +237,8 @@ export const messages = sqliteTable(
     // One attachment belongs to at most one message.
     uniqueIndex('messages_attachment_id_unique').on(table.attachmentId),
     index('messages_reply_to_id_idx').on(table.replyToId),
+    index('messages_expires_at_idx').on(table.expiresAt),
+    index('messages_thread_root_idx').on(table.threadRootId, table.id),
     // Serves "pinned messages in this conversation".
     index('messages_conversation_pinned_idx').on(table.conversationId, table.pinnedAt),
   ],

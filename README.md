@@ -75,25 +75,27 @@ Database schema changes: edit `server/src/db/schema.js`, then
 All configuration is environment variables, validated once at start-up. A bad configuration stops
 the server with one message listing every problem. See `server/.env.example`.
 
-| Variable                                                 | Default                  | Notes                                                                                                |
-| -------------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `NODE_ENV`                                               | `development`            | `production` turns on Secure cookies and requires a Turso URL                                        |
-| `PORT`                                                   | `4000`                   |                                                                                                      |
-| `LOG_LEVEL`                                              | `info`                   | pino levels                                                                                          |
-| `CORS_ORIGINS`                                           | `http://localhost:5173`  | Comma-separated origins (scheme, host, port; no path). Also the websocket and CSRF origin allow-list |
-| `DATABASE_URL`                                           | `file:./data/chatify.db` | `libsql://...` for Turso. A local file is refused in production                                      |
-| `DATABASE_AUTH_TOKEN`                                    | -                        | Required for a remote database                                                                       |
-| `JWT_ACCESS_SECRET`                                      | required                 | At least 32 characters. Also keys the CSRF token signature                                           |
-| `ACCESS_TOKEN_TTL_SECONDS`                               | `900`                    |                                                                                                      |
-| `REFRESH_TOKEN_TTL_SECONDS`                              | `604800`                 |                                                                                                      |
-| `LOGIN_MAX_FAILURES`                                     | `5`                      | Consecutive failures before the account locks                                                        |
-| `LOGIN_LOCKOUT_MINUTES`                                  | `15`                     |                                                                                                      |
-| `AUTH_RATE_LIMIT_MAX`                                    | `30`                     | Credential requests per IP per 15 minutes                                                            |
-| `TRUST_PROXY`                                            | `0`                      | Number of reverse proxies in front of the server                                                     |
-| `UPLOAD_DIR`                                             | `./data/uploads`         | Must be on persistent storage                                                                        |
-| `MAX_UPLOAD_BYTES`                                       | `26214400`               | 25 MB                                                                                                |
-| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | -                        | Web Push. Set all three or none. Generate with `npm run vapid -w server`                             |
-| `CLIENT_DIST_DIR`                                        | -                        | When set, the server also serves the built client with SPA fallback                                  |
+| Variable                                                 | Default                  | Notes                                                                                                    |
+| -------------------------------------------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                                               | `development`            | `production` turns on Secure cookies and requires a Turso URL                                            |
+| `PORT`                                                   | `4000`                   |                                                                                                          |
+| `LOG_LEVEL`                                              | `info`                   | pino levels                                                                                              |
+| `CORS_ORIGINS`                                           | `http://localhost:5173`  | Comma-separated origins (scheme, host, port; no path). Also the websocket and CSRF origin allow-list     |
+| `DATABASE_URL`                                           | `file:./data/chatify.db` | `libsql://...` for Turso. A local file is refused in production                                          |
+| `DATABASE_AUTH_TOKEN`                                    | -                        | Required for a remote database                                                                           |
+| `JWT_ACCESS_SECRET`                                      | required                 | At least 32 characters. Also keys the CSRF token signature                                               |
+| `ACCESS_TOKEN_TTL_SECONDS`                               | `900`                    |                                                                                                          |
+| `REFRESH_TOKEN_TTL_SECONDS`                              | `604800`                 |                                                                                                          |
+| `LOGIN_MAX_FAILURES`                                     | `5`                      | Consecutive failures before the account locks                                                            |
+| `LOGIN_LOCKOUT_MINUTES`                                  | `15`                     |                                                                                                          |
+| `AUTH_RATE_LIMIT_MAX`                                    | `30`                     | Credential requests per IP per 15 minutes                                                                |
+| `TRUST_PROXY`                                            | `0`                      | Number of reverse proxies in front of the server                                                         |
+| `UPLOAD_DIR`                                             | `./data/uploads`         | Must be on persistent storage                                                                            |
+| `MAX_UPLOAD_BYTES`                                       | `26214400`               | 25 MB                                                                                                    |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | -                        | Web Push. Set all three or none. Generate with `npm run vapid -w server`                                 |
+| `MAX_RESUMABLE_BYTES`                                    | see `.env.example`       | Largest file accepted through resumable uploads                                                          |
+| `SMS_PROVIDER`, `SMS_DEFAULT_COUNTRY_CODE`, `AT_*`       | `none`                   | Phone sign-in. `none` hides it; `console` logs codes (development only); `africastalking` sends real SMS |
+| `CLIENT_DIST_DIR`                                        | -                        | When set, the server also serves the built client with SPA fallback                                      |
 
 ## Architecture
 
@@ -438,6 +440,50 @@ The microphone button in the composer records with the browser's MediaRecorder (
 shows the elapsed time, and sends on request. Recordings are checked by content like any upload and
 must be audio. Playback uses a custom player; the server answers `Range` requests so seeking works.
 
+## Disappearing messages, resumable uploads, threads, data saver
+
+- **Disappearing messages.** Any member of a direct chat (or an owner or admin of a group) can set
+  a timer: off, 1 hour, 1 day, 1 week or 30 days. It applies to messages sent after the change. The
+  server hides expired messages from every read path immediately and deletes them (and their files)
+  every 30 seconds; clients remove them live.
+- **Resumable uploads.** Files larger than the single-request threshold are sent in chunks through
+  `/api/uploads`. If the connection drops, the client asks the server how much it has and continues
+  from there. Stale sessions are cleaned up hourly.
+- **Group threads.** In a group, "Reply in thread" opens a side conversation under a message.
+  Replies stay out of the main history, and the root shows a reply count. Threads do not nest.
+- **Data saver.** Photos are not downloaded until tapped. It follows the browser's Save-Data
+  setting unless you choose otherwise in Settings.
+
+## Phone sign-in
+
+Users can add a phone number in Settings, verify it with a code, and then sign in with the number
+and a code. Codes are single-use, expire, and are rate limited. SMS goes through a provider
+interface; Africa's Talking is built in (`SMS_PROVIDER=africastalking` plus the `AT_*` variables in
+`server/.env.example`). With `SMS_PROVIDER=console` the code is written to the server log, which is
+for development only.
+
+## End-to-end encryption
+
+Direct chats can be switched to end-to-end encryption from the conversation details. Each user has
+a P-256 key pair created in Settings. The private key stays in this browser's IndexedDB. A shared
+key is derived per pair (ECDH, then HKDF-SHA256) and messages are sealed with AES-256-GCM, bound to
+the conversation id. The server stores only ciphertext, so it cannot read or search those
+messages. The safety number in the details dialog lets two people check they hold each other's real
+keys.
+
+Key backup is optional: Settings can lock the private key with a passphrase (PBKDF2, 310000 rounds,
+then AES-GCM) and store that opaque blob on the server. We cannot recover a forgotten passphrase.
+On sign-out the local key is removed only when a backup exists.
+
+Limits, by design:
+
+- Direct chats only. No files, voice notes, search or forwarding for encrypted messages, and
+  previews and push text do not show the content.
+- A key lives on one device unless restored from the backup. Without the key, older encrypted
+  messages show as unreadable. Creating a new key replaces the old one and drops its backup.
+- Keys are extractable inside the browser (needed for backup), so a compromised browser profile
+  exposes them. Turning encryption on does not re-encrypt earlier messages.
+
 ## Known limits
 
 - Realtime state (connected sockets, presence, typing) lives in process memory, so run a single
@@ -445,7 +491,7 @@ must be audio. Playback uses a custom player; the server answers `Range` request
   stores; the event bus and registry are the two seams to change.
 - Uploaded files use local disk. For multiple instances or ephemeral hosts, implement the
   `StorageDriver` interface for S3-compatible storage.
-- There are no push notifications, end-to-end encryption, message search or threaded replies.
+- Encryption has the limits listed above. Calls, device management and channels are not built yet.
 
 ## Public site and installable app
 

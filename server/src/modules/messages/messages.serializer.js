@@ -22,7 +22,7 @@ export function betterState(a, b) {
  */
 export function toMessage(
   { message, attachment },
-  { recipientIds, receiptRows = [], reactionRows = [], replyTo = null },
+  { recipientIds, receiptRows = [], reactionRows = [], replyTo = null, thread = null },
 ) {
   const byUser = new Map(receiptRows.map((row) => [row.userId, row]));
   const deleted = Boolean(message.deletedAt);
@@ -32,15 +32,20 @@ export function toMessage(
     senderId: message.senderId,
     clientId: message.clientId,
     body: deleted ? '' : message.body,
+    encrypted: message.encrypted,
     attachment: deleted ? null : toAttachment(attachment),
     editedAt: message.editedAt,
     deletedAt: message.deletedAt,
     createdAt: message.createdAt,
     replyTo,
+    threadRootId: message.threadRootId ?? null,
+    threadCount: thread?.count ?? 0,
+    threadLastAt: thread ? new Date(thread.lastAt).toISOString() : null,
     forwarded: message.forwarded,
     pinnedAt: deleted ? null : message.pinnedAt,
     pinnedBy: deleted ? null : message.pinnedBy,
     reactions: deleted ? [] : groupReactions(reactionRows),
+    expiresAt: message.expiresAt ?? null,
     receipts: recipientIds
       .filter((userId) => userId !== message.senderId)
       .map((userId) => ({ userId, state: receiptState(byUser.get(userId)) })),
@@ -70,7 +75,9 @@ export function toReplyPreview(row) {
   return {
     id: message.id,
     senderId: message.senderId,
-    body: deleted ? '' : message.body.slice(0, PREVIEW_LENGTH),
+    // Ciphertext is never previewed: the client shows a generic label.
+    body: deleted || message.encrypted ? '' : message.body.slice(0, PREVIEW_LENGTH),
+    encrypted: message.encrypted,
     deleted,
     attachmentKind: !deleted && attachment ? toAttachment(attachment).kind : null,
   };
@@ -82,7 +89,8 @@ export function toLastMessage({ message, attachment }) {
   return {
     id: message.id,
     senderId: message.senderId,
-    body: deleted ? '' : message.body.slice(0, PREVIEW_LENGTH),
+    body: deleted || message.encrypted ? '' : message.body.slice(0, PREVIEW_LENGTH),
+    encrypted: message.encrypted,
     deleted,
     attachmentName: !deleted && attachment ? attachment.originalName : null,
     attachmentKind: !deleted && attachment ? toAttachment(attachment).kind : null,

@@ -3,7 +3,9 @@ export function toSelfUser(user) {
   return {
     id: user.id,
     username: user.username,
-    email: user.email,
+    // Accounts created with a phone number have an internal address that is never shown.
+    email: user.email.endsWith('.invalid') ? null : user.email,
+    phone: user.phone ?? null,
     displayName: user.displayName,
     avatarUrl: avatarUrl(user),
     status: user.status,

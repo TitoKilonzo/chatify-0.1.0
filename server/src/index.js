@@ -26,6 +26,8 @@ const realtime = await attachRealtime({
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 async function cleanupOrphans() {
   try {
+    await app.locals.container.uploadsService.cleanupStale();
+    await app.locals.container.phoneService.cleanup();
     const removed = await app.locals.container.attachmentsService.cleanupOrphans();
     if (removed > 0) {
       logger.info({ removed }, 'removed orphaned uploads');
@@ -34,6 +36,20 @@ async function cleanupOrphans() {
     logger.error({ err }, 'orphan cleanup failed');
   }
 }
+async function purgeExpired() {
+  try {
+    const removed = await app.locals.container.messagesService.expireDue();
+    if (removed > 0) {
+      logger.info({ removed }, 'removed expired messages');
+    }
+  } catch (err) {
+    logger.error({ err }, 'expiry purge failed');
+  }
+}
+const EXPIRY_INTERVAL_MS = 30_000;
+const expiryTimer = setInterval(purgeExpired, EXPIRY_INTERVAL_MS);
+expiryTimer.unref();
+
 const cleanupTimer = setInterval(cleanupOrphans, CLEANUP_INTERVAL_MS);
 cleanupTimer.unref();
 setTimeout(cleanupOrphans, 30_000).unref();
@@ -68,6 +84,7 @@ function shutdown(reason, exitCode = 0) {
   forceExit.unref();
 
   clearInterval(cleanupTimer);
+  clearInterval(expiryTimer);
   stopKeepAlive();
   // Closing Socket.io also closes the HTTP server it is attached to.
   realtime

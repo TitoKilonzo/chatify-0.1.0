@@ -4,6 +4,9 @@ import { toMessage, toReplyPreview } from './messages.serializer.js';
 import { isReactionKey } from './reactions.js';
 
 export const MAX_BODY_LENGTH = 4000;
+// Ciphertext is larger than the text it hides (base64 plus a nonce and tag).
+export const MAX_ENCRYPTED_BODY_LENGTH = 8000;
+export const ENCRYPTED_PREFIX = 'e2ee:v1:';
 export const DEFAULT_PAGE_SIZE = 40;
 export const SYNC_PAGE_SIZE = 200;
 export const MAX_PINS = 10;
@@ -46,11 +49,14 @@ export function createMessagesService({
     const replyIds = [
       ...new Set(rows.map((row) => row.message.replyToId).filter((id) => id !== null)),
     ];
-    const [members, receipts, reactions, replied] = await Promise.all([
+    const [members, receipts, reactions, replied, threads] = await Promise.all([
       conversationsRepository.listMemberIdsFor(conversationIds),
       messagesRepository.receiptsFor(rows.map((row) => row.message.id)),
       messagesRepository.reactionsFor(rows.map((row) => row.message.id)),
       messagesRepository.findManyByIds(replyIds),
+      messagesRepository.threadStats(
+        rows.filter((row) => !row.message.threadRootId).map((row) => row.message.id),
+      ),
     ]);
     const reactionsByMessage = new Map();
     for (const reaction of reactions) {
@@ -70,6 +76,7 @@ export function createMessagesService({
         receiptRows: receiptsByMessage.get(row.message.id) ?? [],
         reactionRows: reactionsByMessage.get(row.message.id) ?? [],
         replyTo: toReplyPreview(replied.get(row.message.replyToId)),
+        thread: threads.get(row.message.id) ?? null,
       }),
     );
   }
@@ -82,14 +89,33 @@ export function createMessagesService({
   const service = {
     serializeRows,
 
-    async send(userId, conversationId, { clientId, body, attachmentId, replyToId, forwarded }) {
+    async send(
+      userId,
+      conversationId,
+      { clientId, body, attachmentId, replyToId, threadRootId, forwarded },
+    ) {
       await requireMember(conversationId, userId);
+      const conversation = await conversationsRepository.findById(conversationId);
+      const ttl = conversation?.disappearAfterSeconds;
+      const expiresAt = ttl ? new Date(now().getTime() + ttl * 1000) : null;
 
       const text = (body ?? '').trim();
       if (!text && !attachmentId) {
         throw validationFailed([{ path: 'body', message: 'Write a message or attach a file' }]);
       }
-      if (text.length > MAX_BODY_LENGTH) {
+      const encrypted = Boolean(conversation?.encrypted);
+      if (encrypted) {
+        if (!text.startsWith(ENCRYPTED_PREFIX) || text.length > MAX_ENCRYPTED_BODY_LENGTH) {
+          throw validationFailed([
+            { path: 'body', message: 'This conversation is end-to-end encrypted' },
+          ]);
+        }
+        if (attachmentId) {
+          throw validationFailed([
+            { path: 'attachmentId', message: 'Files are not sent in encrypted conversations yet' },
+          ]);
+        }
+      } else if (text.length > MAX_BODY_LENGTH) {
         throw validationFailed([
           { path: 'body', message: `Messages can be at most ${MAX_BODY_LENGTH} characters` },
         ]);
@@ -112,6 +138,21 @@ export function createMessagesService({
         }
       }
 
+      if (threadRootId) {
+        if (conversation?.type !== 'group') {
+          throw validationFailed([
+            { path: 'threadRootId', message: 'Threads are available in groups' },
+          ]);
+        }
+        const root = await messagesRepository.findById(threadRootId);
+        if (!root || root.message.conversationId !== conversationId || root.message.threadRootId) {
+          throw validationFailed([{ path: 'threadRootId', message: 'Unknown thread' }]);
+        }
+        if (root.message.deletedAt) {
+          throw validationFailed([{ path: 'threadRootId', message: 'That message was deleted' }]);
+        }
+      }
+
       let created;
       try {
         created = await messagesRepository.create({
@@ -122,6 +163,9 @@ export function createMessagesService({
           attachmentId,
           replyToId,
           forwarded,
+          expiresAt,
+          threadRootId,
+          encrypted,
         });
       } catch (err) {
         if (
@@ -142,6 +186,10 @@ export function createMessagesService({
 
       const memberIds = await conversationsRepository.listMemberIds(conversationId);
       events.publish('message.created', { message, memberIds });
+      if (threadRootId) {
+        // The root now shows a new reply count.
+        await publishUpdate(threadRootId, conversationId);
+      }
 
       // Replying proves the sender has seen everything before it.
       const read = await messagesRepository.markRead(
@@ -214,7 +262,13 @@ export function createMessagesService({
       if (!text && !row.attachment) {
         throw validationFailed([{ path: 'body', message: 'A message cannot be empty' }]);
       }
-      if (text.length > MAX_BODY_LENGTH) {
+      if (row.message.encrypted) {
+        if (!text.startsWith(ENCRYPTED_PREFIX) || text.length > MAX_ENCRYPTED_BODY_LENGTH) {
+          throw validationFailed([
+            { path: 'body', message: 'This message is end-to-end encrypted' },
+          ]);
+        }
+      } else if (text.length > MAX_BODY_LENGTH) {
         throw validationFailed([
           { path: 'body', message: `Messages can be at most ${MAX_BODY_LENGTH} characters` },
         ]);
@@ -302,10 +356,39 @@ export function createMessagesService({
      * Send a copy of a message (and its file) to up to five other conversations the caller belongs
      * to. Every target is checked before anything is sent.
      */
+    /**
+     * Remove messages whose disappearing-message time is up, with their files, and tell the
+     * members. Run on a timer; returns how many were removed.
+     */
+    async expireDue(limit = 200) {
+      const due = await messagesRepository.listExpired(now(), limit);
+      if (due.length === 0) {
+        return 0;
+      }
+      await messagesRepository.deleteMany(due.map((row) => row.message.id));
+      const byConversation = new Map();
+      for (const row of due) {
+        const list = byConversation.get(row.message.conversationId) ?? [];
+        list.push(row.message.id);
+        byConversation.set(row.message.conversationId, list);
+        if (row.attachment) {
+          await attachmentsService.discard(row.attachment.id);
+        }
+      }
+      for (const [conversationId, messageIds] of byConversation) {
+        const memberIds = await conversationsRepository.listMemberIds(conversationId);
+        events.publish('message.expired', { conversationId, messageIds, memberIds });
+      }
+      return due.length;
+    },
+
     async forward(userId, messageId, conversationIds) {
       const source = await findForMember(messageId, userId);
       if (source.message.deletedAt) {
         throw new AppError(409, 'MESSAGE_DELETED', 'This message was deleted');
+      }
+      if (source.message.encrypted) {
+        throw conflict('ENCRYPTED_MESSAGE', 'Encrypted messages cannot be forwarded');
       }
       const targets = [...new Set(conversationIds)].slice(0, MAX_FORWARD_TARGETS);
       for (const conversationId of targets) {
@@ -326,6 +409,19 @@ export function createMessagesService({
         sent.push(result.message);
       }
       return sent;
+    },
+
+    /** The root message and one page of its replies, for the thread panel. */
+    async thread(userId, messageId, { afterId = 0, limit = DEFAULT_PAGE_SIZE } = {}) {
+      const rootRow = await findForMember(messageId, userId);
+      if (rootRow.message.threadRootId) {
+        throw notFound('Message not found');
+      }
+      const rows = await messagesRepository.listThread(messageId, { afterId, limit });
+      const hasMore = rows.length > limit;
+      const page = rows.slice(0, limit);
+      const [root, ...replies] = await serializeRows([rootRow, ...page]);
+      return { root, messages: replies, hasMore };
     },
 
     /** Find messages containing a term in the caller's conversations, newest first. */

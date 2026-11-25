@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MAX_BODY_LENGTH } from './messages.service.js';
+import { MAX_ENCRYPTED_BODY_LENGTH } from './messages.service.js';
 
 const clientId = z
   .string()
@@ -13,8 +13,14 @@ export const messageIdParams = z.object({ messageId: z.coerce.number().int().pos
 export const sendMessageBody = z.object({
   clientId,
   replyToId: z.number().int().positive().optional(),
-  body: z.string().max(MAX_BODY_LENGTH).default(''),
+  threadRootId: z.number().int().positive().optional(),
+  body: z.string().max(MAX_ENCRYPTED_BODY_LENGTH).default(''),
   attachmentId: z.uuid().optional(),
+});
+
+export const threadQuery = z.object({
+  after: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce.number().int().min(1).max(100).default(40),
 });
 
 export const reactionBody = z.object({ key: z.string().min(1).max(20) });
@@ -30,7 +36,7 @@ export const searchQuery = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(30),
 });
 
-export const editMessageBody = z.object({ body: z.string().max(MAX_BODY_LENGTH) });
+export const editMessageBody = z.object({ body: z.string().max(MAX_ENCRYPTED_BODY_LENGTH) });
 
 // "createdAtMs.id" of the oldest message the client already has.
 const cursor = z

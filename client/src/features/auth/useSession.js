@@ -1,3 +1,4 @@
+import { forgetLocalKey, useKeyStatus } from '../../lib/e2eeSession.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, api, setSessionExpiredHandler } from '../../lib/api.js';
 import { disablePush } from '../../lib/push.js';
@@ -73,7 +74,14 @@ export function useLogout() {
     onSettled: () => {
       // Unsent messages are removed on an explicit sign-out so they do not linger on a shared
       // device. A session that merely expires keeps them for the next sign-in.
-      clearOutbox(queryClient.getQueryData(sessionKey)?.id);
+      const userId = queryClient.getQueryData(sessionKey)?.id;
+      clearOutbox(userId);
+      // A backed-up key is removed from this device (restore needs the passphrase). Without a
+      // backup it stays, because deleting it would make encrypted history unreadable for good.
+      if (userId && useKeyStatus.getState().hasBackup) {
+        forgetLocalKey(userId).catch(() => {});
+      }
+      useKeyStatus.getState().reset();
       clearSession(queryClient);
     },
   });

@@ -19,8 +19,11 @@ const EXPECTED_TABLES = [
   'message_reactions',
   'message_receipts',
   'messages',
+  'phone_codes',
   'push_subscriptions',
   'refresh_tokens',
+  'upload_sessions',
+  'user_keys',
   'users',
 ];
 

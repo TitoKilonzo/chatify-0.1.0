@@ -38,6 +38,24 @@ export function createConversationsController({ conversationsService }) {
       res.json({ conversation });
     },
 
+    async setEncryption(req, res) {
+      const conversation = await conversationsService.setEncryption(
+        req.auth.userId,
+        req.validated.params.conversationId,
+        req.validated.body.enabled,
+      );
+      res.json({ conversation });
+    },
+
+    async setDisappearing(req, res) {
+      const conversation = await conversationsService.setDisappearing(
+        req.auth.userId,
+        req.validated.params.conversationId,
+        req.validated.body.seconds,
+      );
+      res.json({ conversation });
+    },
+
     async addMembers(req, res) {
       const conversation = await conversationsService.addMembers(
         req.auth.userId,

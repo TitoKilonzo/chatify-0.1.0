@@ -71,6 +71,7 @@ export function addToOutbox(userId, entry, { storage = defaultStorage(), now = D
     body: entry.body,
     attachment: entry.attachment ?? null,
     replyTo: entry.replyTo ?? null,
+    threadRootId: entry.threadRootId ?? null,
     createdAt: entry.createdAt ?? now,
   });
   write(storage, userId, kept.slice(-MAX_ENTRIES));

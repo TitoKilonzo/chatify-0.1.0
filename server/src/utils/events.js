@@ -9,6 +9,7 @@ import { EventEmitter } from 'node:events';
  * - message.created   { message, memberIds }
  * - message.updated   { message, memberIds }
  * - message.deleted   { conversationId, messageId, memberIds }
+ * - message.expired   { conversationId, messageIds, memberIds }
  * - receipt.updated   { conversationId, userId, upToMessageId, state, memberIds }
  * - conversation.changed { conversationId, userIds, addedUserIds, removedUserIds, reason }
  * - user.updated      { userId }

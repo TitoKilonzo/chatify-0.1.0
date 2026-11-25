@@ -5,6 +5,8 @@ import {
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
+import { createReadStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { assertValidKey } from './keys.js';
 
@@ -61,6 +63,26 @@ export function createR2Storage({
           CacheControl: 'private, max-age=86400, immutable',
         }),
       );
+    },
+
+    async putFile(key, filePath, { contentType } = {}) {
+      assertValidKey(key);
+      const info = await stat(filePath);
+      const body = createReadStream(filePath);
+      try {
+        await client.send(
+          new PutObjectCommand({
+            Bucket: bucket,
+            Key: key,
+            Body: body,
+            ContentLength: info.size,
+            ContentType: contentType,
+            CacheControl: 'private, max-age=86400, immutable',
+          }),
+        );
+      } finally {
+        body.destroy();
+      }
     },
 
     async get(key) {

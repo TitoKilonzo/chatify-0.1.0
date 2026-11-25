@@ -257,6 +257,10 @@ export async function attachRealtime({
       emitToUsers(memberIds, 'message:updated', { message });
     }),
 
+    events.subscribe('message.expired', ({ conversationId, messageIds, memberIds }) => {
+      emitToUsers(memberIds, 'message:expired', { conversationId, messageIds });
+    }),
+
     events.subscribe('message.deleted', ({ conversationId, messageId, memberIds }) => {
       emitToUsers(memberIds, 'message:deleted', { conversationId, messageId });
     }),
