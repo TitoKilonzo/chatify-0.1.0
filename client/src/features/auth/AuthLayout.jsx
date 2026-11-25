@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Home, MessageSquare, ShieldCheck, Users, Zap } from 'lucide-react';
+import { ArrowLeft, MessageSquare, ShieldCheck, Users, Zap } from 'lucide-react';
 import { usePageTitle } from '../../hooks/usePageTitle.js';
 import { AuthScene } from './AuthScene.jsx';
 import styles from './AuthLayout.module.css';
@@ -8,12 +8,12 @@ import styles from './AuthLayout.module.css';
 const POINTS = [
   { icon: Zap, text: 'Messages, receipts and typing update live' },
   { icon: Users, text: 'Chat one to one or with the whole group' },
-  { icon: ShieldCheck, text: 'Secure sign-in and checked file uploads' },
+  { icon: ShieldCheck, text: 'Secure account access and checked file uploads' },
 ];
 
 /** Split layout for sign-in and registration: a 3D showcase beside a focused form card. */
 export function AuthLayout({ title, description, footerText, footerLink, children }) {
-  usePageTitle(title);
+  usePageTitle(title, ' | ');
   const showcaseRef = useRef(null);
 
   // The scene leans slightly toward the pointer. Skipped when the user prefers reduced motion.
@@ -69,7 +69,6 @@ export function AuthLayout({ title, description, footerText, footerLink, childre
         <div className={styles.column}>
           <Link to="/" className={styles.back}>
             <ArrowLeft size={16} aria-hidden="true" />
-            <Home size={16} aria-hidden="true" />
             <span>Back to home</span>
           </Link>
           <div className={styles.card}>
