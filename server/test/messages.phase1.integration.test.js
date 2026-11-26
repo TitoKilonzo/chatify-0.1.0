@@ -90,6 +90,38 @@ describe('messages phase 1: replies, reactions, pins, forward, search', () => {
       expect((await a.client.get(`/api/conversations/${id}/pins`)).body.messages).toEqual([]);
     });
 
+    describe('shared media', () => {
+      it('lists only live attachments for conversation members', async () => {
+        const { a, b, id } = await pair();
+        const image = await sharp({
+          create: { width: 30, height: 30, channels: 3, background: '#4A2F22' },
+        })
+          .png()
+          .toBuffer();
+        const firstUpload = await a.client.upload('/api/attachments', image, 'first.png');
+        const secondUpload = await a.client.upload('/api/attachments', image, 'second.png');
+        const first = (
+          await send(a, id, 'first', { attachmentId: firstUpload.body.attachment.id })
+        ).body.message;
+        const second = (
+          await send(a, id, 'second', { attachmentId: secondUpload.body.attachment.id })
+        ).body.message;
+        await a.client.delete(`/api/messages/${first.id}`);
+
+        const response = await b.client.get(`/api/conversations/${id}/media`);
+        expect(response.status).toBe(200);
+        expect(response.body.media).toHaveLength(1);
+        expect(response.body.media[0].attachment).toMatchObject({
+          id: secondUpload.body.attachment.id,
+          name: 'second.png',
+          kind: 'image',
+          url: `/api/attachments/${secondUpload.body.attachment.id}`,
+        });
+        const outsider = await signUp(ctx.app, 'media');
+        expect((await outsider.client.get(`/api/conversations/${id}/media`)).status).toBe(404);
+      }, 15_000);
+    });
+
     it('limits pins per conversation', async () => {
       const { a, id } = await pair();
       for (let i = 0; i < 10; i += 1) {

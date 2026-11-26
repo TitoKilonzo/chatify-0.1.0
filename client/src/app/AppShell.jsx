@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
-import { LogOut, MessageSquare, Settings, Users } from 'lucide-react';
+import { LogOut, MessageSquare, Phone, Settings, Users } from 'lucide-react';
 import { ErrorBoundary } from '../components/ErrorBoundary.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Menu } from '../components/ui/Menu.jsx';
@@ -16,6 +16,7 @@ import styles from './AppShell.module.css';
 const NAV_ITEMS = [
   { to: '/chats', label: 'Chats', icon: MessageSquare },
   { to: '/groups', label: 'Groups', icon: Users },
+  { to: '/calls', label: 'Calls', icon: Phone },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 

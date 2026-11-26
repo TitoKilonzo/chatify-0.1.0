@@ -140,6 +140,21 @@ export function createMessagesRepository(db) {
         .orderBy(desc(messages.pinnedAt), desc(messages.id));
     },
 
+    /** Files shared in a conversation, excluding deleted or expired messages. */
+    async listSharedMedia(conversationId, limit) {
+      return withAttachment(db)
+        .where(
+          and(
+            eq(messages.conversationId, conversationId),
+            isNotNull(messages.attachmentId),
+            isNull(messages.deletedAt),
+            live(),
+          ),
+        )
+        .orderBy(desc(messages.createdAt), desc(messages.id))
+        .limit(limit);
+    },
+
     /**
      * Messages whose text contains the term, newest first, limited to conversations the user
      * belongs to. pattern must already be escaped for LIKE (see likePattern in the service).

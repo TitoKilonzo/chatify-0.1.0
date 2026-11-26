@@ -1,6 +1,7 @@
 import { AppError, conflict, forbidden, notFound, validationFailed } from '../../utils/errors.js';
 import { randomUUID } from 'node:crypto';
 import { toMessage, toReplyPreview } from './messages.serializer.js';
+import { toAttachment } from '../attachments/attachments.serializer.js';
 import { isReactionKey } from './reactions.js';
 
 export const MAX_BODY_LENGTH = 4000;
@@ -353,6 +354,16 @@ export function createMessagesService({
     async listPins(userId, conversationId) {
       await requireMember(conversationId, userId);
       return serializeRows(await messagesRepository.listPinned(conversationId));
+    },
+
+    async sharedMedia(userId, conversationId) {
+      await requireMember(conversationId, userId);
+      const rows = await messagesRepository.listSharedMedia(conversationId, 200);
+      return rows.map(({ message, attachment }) => ({
+        attachment: toAttachment(attachment),
+        messageId: message.id,
+        createdAt: message.createdAt,
+      }));
     },
 
     /**

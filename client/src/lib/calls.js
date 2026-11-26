@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { api } from './api.js';
 import { getSocket } from './socket.js';
+import { queryClient } from './queryClient.js';
 import { startRinging, stopRinging } from './ringtone.js';
 
 /**
@@ -271,6 +272,7 @@ export function bindCalls(socket, meId) {
   });
 
   socket.on('call:ended', ({ call, reason, endedBy }) => {
+    queryClient.invalidateQueries({ queryKey: ['call-history'] });
     if (store().call?.id !== call.id) {
       return;
     }

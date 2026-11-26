@@ -9,12 +9,13 @@ const MAX_CALL_MS = 4 * 60 * 60 * 1000;
  * call ends. The browsers set up the connection with each other and exchange their session
  * descriptions through this service (see realtime).
  *
- * State lives in memory, like presence: a call does not survive a restart, and running more than
- * one server instance would need it moved to shared storage.
+ * Active signaling state lives in memory and does not survive a restart; the call history itself
+ * is persisted. Running multiple server instances still needs shared active-call state.
  */
 export function createCallsService({
   conversationsRepository,
   usersRepository,
+  callsRepository,
   events,
   pushService,
   now = () => new Date(),
@@ -36,7 +37,7 @@ export function createCallsService({
     }
   }
 
-  function finish(call, reason, endedBy = null) {
+  async function finish(call, reason, endedBy = null) {
     if (!calls.has(call.id)) {
       return null;
     }
@@ -45,6 +46,11 @@ export function createCallsService({
     byUser.delete(call.callerId);
     byUser.delete(call.calleeId);
     const ended = { ...call, state: 'ended' };
+    try {
+      await callsRepository?.finish(call.id, { outcome: reason, endedBy, endedAt: now() });
+    } catch (err) {
+      logger?.error({ err, callId: call.id }, 'call history update failed');
+    }
     events.publish('call.ended', { call: ended, reason, endedBy });
     return ended;
   }
@@ -96,14 +102,37 @@ export function createCallsService({
       calls.set(call.id, call);
       byUser.set(userId, call.id);
       byUser.set(calleeId, call.id);
+      try {
+        await callsRepository?.create({
+          id: call.id,
+          conversationId,
+          callerId: userId,
+          calleeId,
+          video: call.video,
+          startedAt: new Date(call.createdAt),
+        });
+      } catch (err) {
+        calls.delete(call.id);
+        byUser.delete(userId);
+        byUser.delete(calleeId);
+        throw err;
+      }
       timers.set(call.id, {
         ring: setTimeout(() => {
           const current = calls.get(call.id);
           if (current?.state === 'ringing') {
-            finish(current, 'missed');
+            finish(current, 'missed').catch((err) =>
+              logger?.error({ err, callId: call.id }, 'call end failed'),
+            );
           }
         }, ringMs),
-        max: setTimeout(() => finish(call, 'timeout'), MAX_CALL_MS),
+        max: setTimeout(
+          () =>
+            finish(call, 'timeout').catch((err) =>
+              logger?.error({ err, callId: call.id }, 'call end failed'),
+            ),
+          MAX_CALL_MS,
+        ),
       });
       timers.get(call.id).ring.unref?.();
       timers.get(call.id).max.unref?.();
@@ -115,13 +144,14 @@ export function createCallsService({
           callerName: caller?.displayName ?? 'Someone',
           video: call.video,
           conversationId,
+          callId: call.id,
         })
         .catch((err) => logger?.warn({ err }, 'call push failed'));
       return call;
     },
 
     /** The callee picks up. */
-    accept(userId, callId) {
+    async accept(userId, callId) {
       const call = require(callId, userId);
       if (call.calleeId !== userId) {
         throw forbidden('NOT_CALLEE', 'Only the person being called can answer');
@@ -131,13 +161,58 @@ export function createCallsService({
       }
       call.state = 'active';
       call.answeredAt = now().toISOString();
+      try {
+        await callsRepository?.markAnswered(call.id, new Date(call.answeredAt));
+      } catch (err) {
+        call.state = 'ringing';
+        call.answeredAt = null;
+        throw err;
+      }
       clearTimeout(timers.get(callId)?.ring);
       events.publish('call.accepted', { call });
       return call;
     },
 
+    async history(userId) {
+      const rows = await callsRepository?.listForUser(userId, 100);
+      const history = rows ?? [];
+      const peerIds = [
+        ...new Set(
+          history.map((row) => (row.callerId === userId ? row.calleeId : row.callerId)),
+        ),
+      ];
+      const peers = await usersRepository.findManyByIds(peerIds);
+      const byId = new Map(peers.map((peer) => [peer.id, peer]));
+      return history.map((row) => {
+        const peer = byId.get(row.callerId === userId ? row.calleeId : row.callerId);
+        const answeredAt = row.answeredAt?.toISOString() ?? null;
+        const endedAt = row.endedAt?.toISOString() ?? null;
+        return {
+          id: row.id,
+          conversationId: row.conversationId,
+          direction: row.callerId === userId ? 'outgoing' : 'incoming',
+          video: row.video,
+          outcome: row.outcome ?? 'interrupted',
+          startedAt: row.startedAt.toISOString(),
+          answeredAt,
+          endedAt,
+          durationSeconds:
+            row.answeredAt && row.endedAt
+              ? Math.max(0, Math.floor((row.endedAt.getTime() - row.answeredAt.getTime()) / 1000))
+              : 0,
+          peer: peer
+            ? {
+                id: peer.id,
+                username: peer.username,
+                displayName: peer.displayName,
+              }
+            : null,
+        };
+      });
+    },
+
     /** Hang up, decline, or cancel. Either side can end it at any time. */
-    end(userId, callId) {
+    async end(userId, callId) {
       const call = require(callId, userId);
       const reason =
         call.state === 'ringing' ? (call.callerId === userId ? 'cancelled' : 'declined') : 'ended';
@@ -170,7 +245,9 @@ export function createCallsService({
         graceTimers.delete(userId);
         const still = this.current(userId);
         if (still) {
-          finish(still, 'dropped', userId);
+          finish(still, 'dropped', userId).catch((err) =>
+            logger?.error({ err, callId: still.id }, 'call end failed'),
+          );
         }
       }, disconnectGraceMs);
       timer.unref?.();

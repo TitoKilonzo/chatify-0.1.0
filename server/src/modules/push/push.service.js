@@ -15,9 +15,9 @@ function describe(message) {
 }
 
 /**
- * Web Push for people who are not connected. Subscriptions are stored per browser; a message
- * notifies members who have no live socket and have not muted the conversation. The push service
- * reports gone endpoints (404 or 410) and those are deleted so they are never tried again.
+ * Web Push for subscribed browsers. The service worker suppresses notifications for a focused app
+ * window; this lets a background browser/device receive alerts even when another device is online.
+ * Muted conversations are still respected, and gone endpoints are removed.
  *
  * sender is injectable for tests; by default it is the web-push library configured with VAPID keys.
  */
@@ -30,26 +30,28 @@ export function createPushService({
   sender,
 }) {
   const enabled = Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY);
-  let isOnline = () => false;
-
   const send =
     sender ??
     (enabled
-      ? (subscription, payload) =>
+      ? (subscription, payload, ttl) =>
           sendNotification(subscription, payload, {
             vapidDetails: {
               subject: env.VAPID_SUBJECT,
               publicKey: env.VAPID_PUBLIC_KEY,
               privateKey: env.VAPID_PRIVATE_KEY,
             },
-            TTL: 60 * 60,
+            TTL: ttl,
             urgency: 'normal',
           })
       : null);
 
-  async function deliver(row, payload) {
+  async function deliver(row, payload, ttl = 60 * 60) {
     try {
-      await send({ endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } }, payload);
+      await send(
+        { endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } },
+        payload,
+        ttl,
+      );
     } catch (err) {
       if (err?.statusCode === 404 || err?.statusCode === 410) {
         await repository.removeByEndpoint(row.endpoint);
@@ -63,7 +65,7 @@ export function createPushService({
     if (!send) {
       return;
     }
-    const candidates = memberIds.filter((id) => id !== message.senderId && !isOnline(id));
+    const candidates = memberIds.filter((id) => id !== message.senderId);
     if (candidates.length === 0) {
       return;
     }
@@ -95,11 +97,6 @@ export function createPushService({
     enabled,
     publicKey: enabled ? env.VAPID_PUBLIC_KEY : null,
 
-    /** Realtime tells the service which users have a live socket (they do not need a push). */
-    setOnlineCheck(fn) {
-      isOnline = fn;
-    },
-
     start() {
       return events.subscribe('message.created', notify);
     },
@@ -120,9 +117,9 @@ export function createPushService({
 
     notify,
 
-    /** Tell someone who is not in the app that a call is ringing. Resolves when sent or skipped. */
-    async notifyCall(userId, { callerName, video, conversationId }) {
-      if (!send || isOnline(userId)) {
+    /** Alert subscribed devices while the call is ringing. */
+    async notifyCall(userId, { callerName, video, conversationId, callId }) {
+      if (!send) {
         return;
       }
       const subscriptions = await repository.listForUsers([userId]);
@@ -131,9 +128,11 @@ export function createPushService({
         body: video ? 'Incoming video call' : 'Incoming voice call',
         conversationId,
         url: `/chats/${conversationId}`,
-        tag: `call-${conversationId}`,
+        kind: 'call',
+        callId,
+        tag: `call-${callId}`,
       });
-      await Promise.all(subscriptions.map((row) => deliver(row, payload)));
+      await Promise.all(subscriptions.map((row) => deliver(row, payload, 45)));
     },
   };
 }

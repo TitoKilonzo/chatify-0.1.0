@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo, useRef, useState } from 'react';
 import {
   Copy,
   Ellipsis,
@@ -64,12 +64,66 @@ function MessageItemBase({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState(false);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const swipeStart = useRef(null);
   const setReply = useReplyStore((state) => state.setReply);
   const readable = useMessageText(message);
   const e2ee = useE2ee();
   const deleted = Boolean(message.deletedAt);
   const settled = !message.pending && !deleted;
   const myReaction = message.reactions?.find((r) => r.userIds.includes(meId))?.key ?? null;
+
+  function startSwipe(event) {
+    if (
+      event.pointerType !== 'touch' ||
+      !event.isPrimary ||
+      !canReply ||
+      !settled ||
+      editing ||
+      event.target.closest?.('button, a, input, textarea, video, audio')
+    ) {
+      return;
+    }
+    swipeStart.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function moveSwipe(event) {
+    const start = swipeStart.current;
+    if (!start || start.pointerId !== event.pointerId) {
+      return;
+    }
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    if (Math.abs(dy) > 24 && Math.abs(dy) > Math.abs(dx)) {
+      swipeStart.current = null;
+      setSwipeOffset(0);
+      return;
+    }
+    setSwipeOffset(Math.max(0, Math.min(72, dx * 0.8)));
+  }
+
+  function finishSwipe(event) {
+    const start = swipeStart.current;
+    if (start?.pointerId === event.pointerId) {
+      const dx = event.clientX - start.x;
+      const dy = event.clientY - start.y;
+      if (dx >= 64 && dx > Math.abs(dy) * 1.25) {
+        setReply(message.conversationId, message);
+      }
+    }
+    swipeStart.current = null;
+    setSwipeOffset(0);
+  }
+
+  function cancelSwipe() {
+    swipeStart.current = null;
+    setSwipeOffset(0);
+  }
 
   async function run(action) {
     setError(null);
@@ -202,7 +256,20 @@ function MessageItemBase({
           </div>
         ) : null}
 
-        <article className={styles.bubble} aria-label={`Message from ${own ? 'you' : senderName}`}>
+        <article
+          className={cx(styles.bubble, swipeOffset > 0 && styles.swiping)}
+          style={{ '--swipe-offset': `${swipeOffset}px` }}
+          aria-label={`Message from ${own ? 'you' : senderName}`}
+          onPointerDown={startSwipe}
+          onPointerMove={moveSwipe}
+          onPointerUp={finishSwipe}
+          onPointerCancel={cancelSwipe}
+        >
+          {swipeOffset > 24 ? (
+            <span className={styles.swipeReply} aria-hidden="true">
+              <Reply size={18} />
+            </span>
+          ) : null}
           {isGroup && !own && !continued ? <p className={styles.sender}>{senderName}</p> : null}
 
           {!deleted && message.forwarded ? (

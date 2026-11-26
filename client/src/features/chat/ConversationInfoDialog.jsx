@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Archive, ArchiveRestore, Bell, BellOff, Camera, Ellipsis, LogOut } from 'lucide-react';
 import { Alert } from '../../components/ui/Alert.jsx';
@@ -8,6 +9,9 @@ import { Dialog } from '../../components/ui/Dialog.jsx';
 import { IconButton } from '../../components/ui/IconButton.jsx';
 import { Input } from '../../components/ui/Input.jsx';
 import { Menu } from '../../components/ui/Menu.jsx';
+import { api } from '../../lib/api.js';
+import { formatBytes } from '../../lib/format.js';
+import { formatMessageTime } from '../../lib/date.js';
 import { formatLastSeen } from '../../lib/date.js';
 import { effectivePresence, usePresenceStore } from '../../stores/liveStores.js';
 import {
@@ -72,6 +76,8 @@ function Details({ conversation, meId, section, onClose }) {
 
       {isGroup ? null : <EncryptionSetting conversation={conversation} />}
 
+      <SharedMedia conversationId={conversation.id} />
+
       {isGroup ? (
         <GroupManagement
           conversation={conversation}
@@ -98,6 +104,70 @@ function PersonHeader({ user }) {
         </p>
       </div>
     </div>
+  );
+}
+
+function SharedMedia({ conversationId }) {
+  const { data, isPending, isError, error } = useQuery({
+    queryKey: ['conversation-media', conversationId],
+    queryFn: async () => (await api.get(`/conversations/${conversationId}/media`)).media,
+    refetchOnMount: 'always',
+  });
+
+  return (
+    <section className={styles.section} aria-labelledby="shared-media-heading">
+      <h3 id="shared-media-heading" className={styles.sectionTitle}>
+        Shared media and files
+      </h3>
+      {isPending ? <p className={styles.muted}>Loading shared files...</p> : null}
+      {isError ? <Alert>{error.message}</Alert> : null}
+      {!isPending && !isError && data?.length === 0 ? (
+        <p className={styles.muted}>Photos, videos, voice notes, and files will appear here.</p>
+      ) : null}
+      {data?.length ? (
+        <ul className={styles.mediaGrid}>
+          {data.map(({ attachment, createdAt }) => (
+            <li key={attachment.id} className={styles.mediaItem}>
+              {attachment.mimeType.startsWith('image/') ? (
+                <a
+                  className={styles.mediaPreview}
+                  href={attachment.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Open ${attachment.name}`}
+                >
+                  <img
+                    src={attachment.thumbnailUrl ?? attachment.url}
+                    alt={attachment.name}
+                    loading="lazy"
+                  />
+                </a>
+              ) : attachment.mimeType.startsWith('video/') ? (
+                // This gallery cannot provide a caption track for user-uploaded videos.
+                // eslint-disable-next-line jsx-a11y/media-has-caption
+                <video
+                  className={styles.mediaPreview}
+                  src={attachment.url}
+                  controls
+                  preload="metadata"
+                  aria-label={attachment.name}
+                />
+              ) : attachment.mimeType.startsWith('audio/') ? (
+                <audio src={attachment.url} controls aria-label={attachment.name} />
+              ) : (
+                <a className={styles.mediaFile} href={attachment.url} download={attachment.name}>
+                  {attachment.name}
+                </a>
+              )}
+              <span className={styles.mediaName}>{attachment.name}</span>
+              <span className={styles.muted}>
+                {formatBytes(attachment.sizeBytes)} | {formatMessageTime(createdAt)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
   );
 }
 

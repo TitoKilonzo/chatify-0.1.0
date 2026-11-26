@@ -98,6 +98,55 @@
   gap: var(--space-2);
 }
 
+.mediaGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mediaItem {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+}
+
+.mediaPreview {
+  display: block;
+  width: 100%;
+  height: 112px;
+  overflow: hidden;
+  object-fit: cover;
+  background: var(--surface-raised);
+  border: 0;
+  border-radius: var(--radius);
+}
+
+.mediaPreview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mediaFile {
+  display: flex;
+  align-items: center;
+  min-height: 112px;
+  padding: var(--space-2);
+  overflow-wrap: anywhere;
+  background: var(--surface-raised);
+  border-radius: var(--radius-sm);
+}
+
+.mediaName {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sectionTitle {
   display: flex;
   align-items: center;

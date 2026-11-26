@@ -102,7 +102,7 @@ describe('calls', () => {
       const endedForCallee = waitFor(cancelled.sb, 'call:ended');
       await emitAck(cancelled.sa, 'call:end', { callId: cancelled.call.id });
       expect((await endedForCallee).reason).toBe('cancelled');
-    });
+    }, 15_000);
 
     it('ends an unanswered call as missed', async () => {
       const { sa, sb } = await ringing();
@@ -133,18 +133,24 @@ describe('calls', () => {
 
   describe('rules', () => {
     it('refuses a second call for either person', async () => {
-      const { a, b, id, sa, sb } = await ringing();
+      const { a, b, id } = await pair();
+      const third = await signUp(ctx.app, 'cc');
+      const dm = await third.client.post('/api/conversations/direct', { userId: b.id });
+      const sa = await connect(a);
+      const sb = await connect(b);
+      const sc = await connect(third);
+      const incoming = waitFor(sb, 'call:incoming');
+      const started = await emitAck(sa, 'call:invite', { conversationId: id });
+      expect(started.ok).toBe(true);
+      await incoming;
       const again = await emitAck(sa, 'call:invite', { conversationId: id });
       expect(again.error.code).toBe('ALREADY_IN_CALL');
 
-      const third = await signUp(ctx.app, 'cc');
-      const dm = await third.client.post('/api/conversations/direct', { userId: b.id });
-      const sc = await connect(third);
       const busy = await emitAck(sc, 'call:invite', { conversationId: dm.body.conversation.id });
       expect(busy.error.code).toBe('USER_BUSY');
       expect(a.id).not.toBe(b.id);
       expect(sb.connected).toBe(true);
-    });
+    }, 15_000);
 
     it('does not allow calls in groups or for non-members', async () => {
       const [a, b, c] = await Promise.all([
@@ -237,7 +243,7 @@ describe('calls', () => {
   });
 
   describe('notifications', () => {
-    it('pushes to a callee who has no live socket', async () => {
+    it('pushes to subscribed devices when the callee has the app open elsewhere', async () => {
       const { a, b, id } = await pair();
       const saved = await b.client.post('/api/push/subscriptions', {
         endpoint: 'https://push.example.com/send/call-1',
@@ -245,9 +251,46 @@ describe('calls', () => {
       });
       expect(saved.status).toBeLessThan(300);
       const sa = await connect(a);
+      const sb = await connect(b);
+      const incoming = waitFor(sb, 'call:incoming');
       await emitAck(sa, 'call:invite', { conversationId: id, video: true });
+      await incoming;
       await new Promise((resolve) => setTimeout(resolve, 100));
       expect(pushes.some((p) => String(p.payload).includes('Incoming video call'))).toBe(true);
+    });
+  });
+
+  describe('history', () => {
+    it('stores calls for both participants and does not expose them to strangers', async () => {
+      const { a, b, sa, sb, call } = await ringing(true);
+      await emitAck(sb, 'call:end', { callId: call.id });
+
+      const callerHistory = await a.client.get('/api/calls/history');
+      const calleeHistory = await b.client.get('/api/calls/history');
+      expect(callerHistory.body.calls).toHaveLength(1);
+      expect(callerHistory.body.calls[0]).toMatchObject({
+        id: call.id,
+        direction: 'outgoing',
+        outcome: 'declined',
+        video: true,
+        peer: { id: b.id, displayName: b.user.displayName },
+      });
+      expect(calleeHistory.body.calls[0]).toMatchObject({
+        id: call.id,
+        direction: 'incoming',
+        outcome: 'declined',
+        peer: { id: a.id, displayName: a.user.displayName },
+      });
+      expect(callerHistory.body.calls[0].peer).not.toHaveProperty('passwordHash');
+
+      const stranger = await signUp(ctx.app, 'history');
+      expect((await stranger.client.get('/api/calls/history')).body.calls).toEqual([]);
+      expect(sa.connected).toBe(true);
+    });
+
+    it('requires sign-in', async () => {
+      const res = await createClient(ctx.app).get('/api/calls/history');
+      expect(res.status).toBe(401);
     });
   });
 

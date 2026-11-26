@@ -45,6 +45,7 @@
   --text-inverse: var(--color-oat);
   --text-inverse-muted: var(--color-oat-dark);
   --text-on-accent: var(--color-oat-light);
+  --text-danger: var(--color-cherry-dark);
 
   /* Semantic: focus rings (cherry is reserved for key actions) */
   --focus-default: var(--color-cocoa);

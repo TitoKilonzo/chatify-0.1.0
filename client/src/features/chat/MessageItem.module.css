@@ -50,6 +50,7 @@
 }
 
 .bubble {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -59,6 +60,25 @@
   background: var(--surface-app);
   border: 1px solid var(--border-default);
   border-radius: var(--radius);
+  transform: translateX(var(--swipe-offset, 0));
+  transition: transform 180ms ease-out;
+  touch-action: pan-y;
+}
+
+.swiping {
+  transition: none;
+}
+
+.swipeReply {
+  position: absolute;
+  top: 50%;
+  left: calc(-1 * var(--space-8));
+  display: grid;
+  place-items: center;
+  width: var(--space-6);
+  height: var(--space-6);
+  color: var(--text-primary);
+  transform: translateY(-50%);
 }
 
 .own .bubble {

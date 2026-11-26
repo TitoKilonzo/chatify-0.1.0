@@ -8,6 +8,7 @@ import { createAttachmentsRepository } from './modules/attachments/attachments.r
 import { createAttachmentsService } from './modules/attachments/attachments.service.js';
 import { createConversationsRepository } from './modules/conversations/conversations.repository.js';
 import { createCallsService } from './modules/calls/calls.service.js';
+import { createCallsRepository } from './modules/calls/calls.repository.js';
 import { createConversationsService } from './modules/conversations/conversations.service.js';
 import { createKeysRepository } from './modules/keys/keys.repository.js';
 import { createPhoneRepository } from './modules/phone/phone.repository.js';
@@ -129,6 +130,7 @@ export function createContainer({
   const callsService = createCallsService({
     conversationsRepository,
     usersRepository,
+    callsRepository: createCallsRepository(db),
     events,
     pushService,
     logger,

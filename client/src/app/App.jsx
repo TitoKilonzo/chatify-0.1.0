@@ -9,6 +9,7 @@ import { ChatLayout } from '../features/chat/ChatLayout.jsx';
 import { ConversationPane } from '../features/chat/ConversationPane.jsx';
 import { EmptyPane } from '../features/chat/EmptyPane.jsx';
 import { SettingsPage } from '../features/profile/SettingsPage.jsx';
+import { CallsPage } from '../features/calls/CallsPage.jsx';
 import { HomePage } from '../features/public/HomePage.jsx';
 import { PublicLayout } from '../features/public/PublicLayout.jsx';
 import { queryClient } from '../lib/queryClient.js';
@@ -68,6 +69,7 @@ export function App() {
                   <Route path=":conversationId" element={<ConversationPane />} />
                 </Route>
                 <Route path="/settings" element={<SettingsPage />} />
+                <Route path="/calls" element={<CallsPage />} />
               </Route>
             </Route>
           </Routes>

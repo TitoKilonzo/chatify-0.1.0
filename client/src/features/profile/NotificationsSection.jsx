@@ -74,8 +74,8 @@ export function NotificationsSection() {
       ) : (
         <>
           <p className={styles.note}>
-            Get a notification for new messages when Chatify is not open. Muted conversations stay
-            quiet.
+            Get alerts for new messages and incoming calls when Chatify is in the background. Muted
+            conversations stay quiet. Open Chatify to answer a call.
           </p>
           {error ? <Alert>{error}</Alert> : null}
           <div>

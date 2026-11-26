@@ -343,3 +343,39 @@ export const messageReceipts = sqliteTable(
     index('message_receipts_user_id_idx').on(table.userId),
   ],
 );
+
+/** Persistent call activity for the participants' history; no signaling/media is stored. */
+export const callHistory = sqliteTable(
+  'call_history',
+  {
+    id: id(),
+    conversationId: text('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    callerId: text('caller_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    calleeId: text('callee_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    video: integer('video', { mode: 'boolean' }).notNull().default(false),
+    outcome: text('outcome', {
+      enum: ['missed', 'cancelled', 'declined', 'ended', 'timeout', 'dropped'],
+    }),
+    endedBy: text('ended_by'),
+    startedAt: integer('started_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    answeredAt: integer('answered_at', { mode: 'timestamp_ms' }),
+    endedAt: integer('ended_at', { mode: 'timestamp_ms' }),
+  },
+  (table) => [
+    index('call_history_caller_started_idx').on(table.callerId, table.startedAt),
+    index('call_history_callee_started_idx').on(table.calleeId, table.startedAt),
+    index('call_history_conversation_idx').on(table.conversationId),
+    check(
+      'call_history_outcome_valid',
+      sql`${table.outcome} IS NULL OR ${table.outcome} IN ('missed', 'cancelled', 'declined', 'ended', 'timeout', 'dropped')`,
+    ),
+  ],
+);

@@ -76,6 +76,14 @@ export function createMessagesController({ messagesService }) {
       res.json({ messages });
     },
 
+    async sharedMedia(req, res) {
+      const media = await messagesService.sharedMedia(
+        req.auth.userId,
+        req.validated.params.conversationId,
+      );
+      res.json({ media });
+    },
+
     async forward(req, res) {
       const messages = await messagesService.forward(
         req.auth.userId,

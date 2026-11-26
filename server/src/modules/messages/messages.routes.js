@@ -29,6 +29,11 @@ export function createConversationMessagesRouter({ controller, sendLimiter }) {
     controller.send,
   );
   router.get('/:conversationId/pins', validate({ params: conversationIdParams }), controller.pins);
+  router.get(
+    '/:conversationId/media',
+    validate({ params: conversationIdParams }),
+    controller.sharedMedia,
+  );
   router.post(
     '/:conversationId/read',
     validate({ params: conversationIdParams, body: markReadBody }),

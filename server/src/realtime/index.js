@@ -92,8 +92,7 @@ export async function attachRealtime({
 
   const allowedOrigins = new Set(env.CORS_ORIGINS);
   const registry = createRegistry();
-  // Users with a live socket see messages in the app; only the others get a push notification.
-  container.pushService.setOnlineCheck((userId) => registry.isOnline(userId));
+  // The service worker decides whether each subscribed browser is focused enough to suppress push.
 
   const io = new Server(server, {
     serveClient: false,
@@ -236,12 +235,14 @@ export async function attachRealtime({
     );
     socket.on(
       'call:accept',
-      callHandler(callIdPayload, ({ callId }) => ({ call: callsService.accept(userId, callId) })),
+      callHandler(callIdPayload, async ({ callId }) => ({
+        call: await callsService.accept(userId, callId),
+      })),
     );
     socket.on(
       'call:end',
-      callHandler(callIdPayload, ({ callId }) => {
-        callsService.end(userId, callId);
+      callHandler(callIdPayload, async ({ callId }) => {
+        await callsService.end(userId, callId);
         return {};
       }),
     );
