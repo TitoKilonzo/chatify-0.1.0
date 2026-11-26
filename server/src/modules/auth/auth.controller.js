@@ -42,6 +42,34 @@ export function createAuthController({ authService, sessionCookies, csrf }) {
       res.status(204).end();
     },
 
+    async listSessions(req, res) {
+      const sessions = await authService.listSessions(
+        req.auth.userId,
+        req.cookies?.[REFRESH_COOKIE],
+      );
+      res.json({ sessions });
+    },
+
+    async revokeSession(req, res) {
+      const { own } = await authService.revokeSession(
+        req.auth.userId,
+        req.validated.params.sessionId,
+        req.cookies?.[REFRESH_COOKIE],
+      );
+      if (own) {
+        sessionCookies.clear(res);
+      }
+      res.status(204).end();
+    },
+
+    async revokeOtherSessions(req, res) {
+      const result = await authService.revokeOtherSessions(
+        req.auth.userId,
+        req.cookies?.[REFRESH_COOKIE],
+      );
+      res.json(result);
+    },
+
     async me(req, res) {
       const user = await authService.getUser(req.auth.userId);
       if (!user) {

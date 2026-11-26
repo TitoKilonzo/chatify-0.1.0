@@ -1,6 +1,8 @@
 import path from 'node:path';
 import express from 'express';
 import helmet from 'helmet';
+import { createCallsRouter } from './modules/calls/calls.routes.js';
+import { createChannelsRouter } from './modules/channels/channels.routes.js';
 import { createKeysRouter } from './modules/keys/keys.routes.js';
 import { createPhoneRouter } from './modules/phone/phone.routes.js';
 import { createUploadsRouter } from './modules/uploads/uploads.routes.js';
@@ -80,6 +82,7 @@ export function createApp({
   storage,
   pushSender,
   smsOverride,
+  callsOptions,
 }) {
   const app = express();
   const container = createContainer({
@@ -90,6 +93,7 @@ export function createApp({
     storageOverride: storage,
     pushSender,
     smsOverride,
+    callsOptions,
   });
   app.locals.container = container;
 
@@ -189,6 +193,12 @@ export function createApp({
       credentialLimiter,
     }),
   );
+  app.use(
+    '/api/channels',
+    requireAuth,
+    createChannelsRouter({ conversationsService: container.conversationsService }),
+  );
+  app.use('/api/calls', requireAuth, createCallsRouter({ env }));
   app.use('/api/push', createPushRouter({ pushService: container.pushService, requireAuth }));
   app.use(
     '/api/conversations',

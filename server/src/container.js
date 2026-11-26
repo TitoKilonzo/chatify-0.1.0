@@ -7,6 +7,7 @@ import { createAccessTokens } from './modules/auth/tokens.js';
 import { createAttachmentsRepository } from './modules/attachments/attachments.repository.js';
 import { createAttachmentsService } from './modules/attachments/attachments.service.js';
 import { createConversationsRepository } from './modules/conversations/conversations.repository.js';
+import { createCallsService } from './modules/calls/calls.service.js';
 import { createConversationsService } from './modules/conversations/conversations.service.js';
 import { createKeysRepository } from './modules/keys/keys.repository.js';
 import { createPhoneRepository } from './modules/phone/phone.repository.js';
@@ -36,6 +37,7 @@ export function createContainer({
   storageOverride,
   pushSender,
   smsOverride,
+  callsOptions,
 }) {
   const { db } = database;
   const events = createEventBus({
@@ -124,12 +126,21 @@ export function createContainer({
     sender: pushSender,
   });
   pushService.start();
+  const callsService = createCallsService({
+    conversationsRepository,
+    usersRepository,
+    events,
+    pushService,
+    logger,
+    ...callsOptions,
+  });
 
   return {
     keysRepository,
     phoneService,
     uploadsService,
     pushService,
+    callsService,
     events,
     accessTokens,
     sessionCookies,

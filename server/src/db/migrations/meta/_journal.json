@@ -64,6 +64,20 @@
       "when": 1795587070911,
       "tag": "0008_e2ee",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1795609528251,
+      "tag": "0009_devices",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1795609677371,
+      "tag": "0010_channels",
+      "breakpoints": true
     }
   ]
 }

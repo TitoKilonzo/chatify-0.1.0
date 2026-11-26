@@ -94,8 +94,11 @@ export function createMessagesService({
       conversationId,
       { clientId, body, attachmentId, replyToId, threadRootId, forwarded },
     ) {
-      await requireMember(conversationId, userId);
+      const member = await requireMember(conversationId, userId);
       const conversation = await conversationsRepository.findById(conversationId);
+      if (conversation?.broadcast && member.role === 'member') {
+        throw forbidden('CHANNEL_READ_ONLY', 'Only channel admins can post here');
+      }
       const ttl = conversation?.disappearAfterSeconds;
       const expiresAt = ttl ? new Date(now().getTime() + ttl * 1000) : null;
 
@@ -139,7 +142,7 @@ export function createMessagesService({
       }
 
       if (threadRootId) {
-        if (conversation?.type !== 'group') {
+        if (conversation?.type !== 'group' || conversation.broadcast) {
           throw validationFailed([
             { path: 'threadRootId', message: 'Threads are available in groups' },
           ]);

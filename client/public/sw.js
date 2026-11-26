@@ -6,10 +6,9 @@
  * It also shows push notifications for messages that arrive while the app is not open, and opens
  * the right conversation when one is tapped.
  */
-const VERSION = 'v3';
+const VERSION = 'v2';
 const CACHE = `chatify-shell-${VERSION}`;
 const OFFLINE_URL = '/offline.html';
-const NAVIGATION_TIMEOUT_MS = 5000;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -47,34 +46,19 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) {
+  // Only page navigations are handled. Everything else goes straight to the network untouched.
+  if (request.mode !== 'navigate' || request.method !== 'GET') {
     return;
   }
   const url = new URL(request.url);
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/socket.io/')) {
     return;
   }
-  if (request.mode === 'navigate') {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), NAVIGATION_TIMEOUT_MS);
-    event.respondWith(
-      fetch(request, { signal: controller.signal })
-        .catch(async () => {
-          const cache = await caches.open(CACHE);
-          return (await cache.match(OFFLINE_URL)) ?? Response.error();
-        })
-        .finally(() => clearTimeout(timeout)),
-    );
-    return;
-  }
-
-  // The install event caches only assets referenced by offline.html. Use those cached files when
-  // its navigation fallback is shown without a connection; all other assets remain network-only.
   event.respondWith(
-    (async () => {
+    fetch(request).catch(async () => {
       const cache = await caches.open(CACHE);
-      return (await cache.match(request)) ?? fetch(request);
-    })(),
+      return (await cache.match(OFFLINE_URL)) ?? Response.error();
+    }),
   );
 });
 

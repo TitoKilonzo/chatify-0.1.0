@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { uniqueViolation } from '../../db/errors.js';
 import { AppError, conflict, tooManyRequests, unauthorized } from '../../utils/errors.js';
 import { generateRefreshToken, hashToken } from './tokens.js';
@@ -32,13 +33,18 @@ export function createAuthService({
 
   async function issueSession(user, userAgent) {
     const refreshToken = generateRefreshToken();
+    const started = now();
+    const sessionId = randomUUID();
     await refreshTokensRepository.create({
       userId: user.id,
       tokenHash: hashToken(refreshToken),
-      expiresAt: new Date(now().getTime() + refreshTtlMs),
+      expiresAt: new Date(started.getTime() + refreshTtlMs),
       userAgent: userAgent ?? null,
+      sessionId,
+      sessionStartedAt: started,
+      lastUsedAt: started,
     });
-    return { user, accessToken: accessTokens.sign(user.id), refreshToken };
+    return { user, accessToken: accessTokens.sign(user.id, sessionId), refreshToken, sessionId };
   }
 
   return {
@@ -113,6 +119,10 @@ export function createAuthService({
 
       const current = now();
       if (row.revokedAt) {
+        // Ended from the device list: this device is simply signed out. Not a sign of theft.
+        if (row.revokedReason === 'device') {
+          throw refreshRejected();
+        }
         if (current.getTime() - row.revokedAt.getTime() <= REFRESH_REUSE_GRACE_MS) {
           throw new AppError(401, 'REFRESH_RACE', 'Session refresh already in progress');
         }
@@ -130,6 +140,7 @@ export function createAuthService({
       }
 
       const refreshToken = generateRefreshToken();
+      const sessionId = row.sessionId ?? row.id;
       const rotated = await refreshTokensRepository.rotate({
         oldId: row.id,
         now: current,
@@ -138,12 +149,15 @@ export function createAuthService({
           tokenHash: hashToken(refreshToken),
           expiresAt: new Date(current.getTime() + refreshTtlMs),
           userAgent: userAgent ?? null,
+          sessionId,
+          sessionStartedAt: row.sessionStartedAt ?? row.createdAt,
+          lastUsedAt: current,
         },
       });
       if (!rotated) {
         throw new AppError(401, 'REFRESH_RACE', 'Session refresh already in progress');
       }
-      return { user, accessToken: accessTokens.sign(user.id), refreshToken };
+      return { user, accessToken: accessTokens.sign(user.id, sessionId), refreshToken, sessionId };
     },
 
     /** Revoke the presented refresh token. Always succeeds, even for unknown tokens. */
@@ -156,6 +170,66 @@ export function createAuthService({
         await refreshTokensRepository.revoke(row.id, now());
         events?.publish('user.sessions-revoked', { userId: row.userId, reason: 'logout' });
       }
+    },
+
+    /** The devices signed in as this user. currentToken marks the caller's own session. */
+    async listSessions(userId, currentToken) {
+      const current = currentToken
+        ? await refreshTokensRepository.findByHash(hashToken(currentToken))
+        : null;
+      const currentId =
+        current && current.userId === userId ? (current.sessionId ?? current.id) : null;
+      const rows = await refreshTokensRepository.listActive(userId, now());
+      return rows.map((row) => {
+        const id = row.sessionId ?? row.id;
+        return {
+          id,
+          userAgent: row.userAgent,
+          startedAt: row.sessionStartedAt ?? row.createdAt,
+          lastActiveAt: row.lastUsedAt ?? row.createdAt,
+          current: id === currentId,
+        };
+      });
+    },
+
+    /** End one session. Returns whether it was the caller's own. */
+    async revokeSession(userId, sessionId, currentToken) {
+      const ended = await refreshTokensRepository.revokeSession(userId, sessionId, now());
+      if (ended === 0) {
+        throw new AppError(404, 'SESSION_NOT_FOUND', 'Session not found');
+      }
+      events?.publish('user.sessions-revoked', {
+        userId,
+        sessionIds: [sessionId],
+        reason: 'device',
+      });
+      const current = currentToken
+        ? await refreshTokensRepository.findByHash(hashToken(currentToken))
+        : null;
+      return { own: Boolean(current && (current.sessionId ?? current.id) === sessionId) };
+    },
+
+    /** Sign out every device except the caller's. */
+    async revokeOtherSessions(userId, currentToken) {
+      const current = currentToken
+        ? await refreshTokensRepository.findByHash(hashToken(currentToken))
+        : null;
+      if (!current || current.userId !== userId) {
+        throw unauthorized();
+      }
+      const ended = await refreshTokensRepository.revokeOthers(
+        userId,
+        current.sessionId ?? current.id,
+        now(),
+      );
+      if (ended.length > 0) {
+        events?.publish('user.sessions-revoked', { userId, sessionIds: ended, reason: 'device' });
+      }
+      return { revoked: new Set(ended).size };
+    },
+
+    async isSessionActive(userId, sessionId) {
+      return refreshTokensRepository.isSessionActive(userId, sessionId, now());
     },
 
     async getUser(userId) {

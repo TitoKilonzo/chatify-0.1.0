@@ -78,7 +78,7 @@ export function RegisterPage() {
           value={values.username}
           onChange={onChange}
           error={errors.username}
-          hint="3 to 30 characters: letters, numbers, underscore"
+          hint="3-30 characters: letters, numbers, underscore"
           autoComplete="username"
           autoCapitalize="none"
           spellCheck={false}

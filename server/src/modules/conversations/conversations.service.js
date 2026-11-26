@@ -1,7 +1,12 @@
 import { conflict, forbidden, notFound, validationFailed } from '../../utils/errors.js';
-import { toConversationSummary, toMemberEntry } from './conversations.serializer.js';
+import {
+  toChannelListing,
+  toConversationSummary,
+  toMemberEntry,
+} from './conversations.serializer.js';
 
 export const MAX_GROUP_MEMBERS = 256;
+export const MAX_CHANNEL_MEMBERS = 2000;
 
 /**
  * Conversation business logic. Non-members always receive 404 so conversation ids cannot be probed.
@@ -100,7 +105,12 @@ export function createConversationsService({
 
     async get(userId, conversationId) {
       const { summary, members } = await summarize(conversationId, userId);
-      return { ...summary, members: members.map(toMemberEntry) };
+      // Subscribers see who runs a channel, not who else is subscribed.
+      const visible =
+        summary.channel && summary.role === 'member'
+          ? members.filter((entry) => entry.member.role !== 'member')
+          : members;
+      return { ...summary, members: visible.map(toMemberEntry) };
     },
 
     async openDirect(userId, otherUserId) {
@@ -141,6 +151,61 @@ export function createConversationsService({
       await notifyChanged(conversation.id, 'created', { added: [userId, ...others] });
       const { summary } = await summarize(conversation.id, userId);
       return summary;
+    },
+
+    async createChannel(userId, { name, description, isPublic, memberIds }) {
+      const others = [...new Set(memberIds)].filter((id) => id !== userId);
+      await ensureUsersExist(others);
+      const conversation = await conversationsRepository.createGroup({
+        name,
+        createdBy: userId,
+        memberIds: others,
+        broadcast: true,
+        description: description || null,
+        isPublic,
+      });
+      await notifyChanged(conversation.id, 'created', { added: [userId, ...others] });
+      const { summary } = await summarize(conversation.id, userId);
+      return summary;
+    },
+
+    async updateChannel(userId, conversationId, values) {
+      const { conversation } = await requireGroupManager(conversationId, userId);
+      if (!conversation.broadcast) {
+        throw validationFailed([{ path: 'conversationId', message: 'Not a channel' }]);
+      }
+      const changes = {};
+      if (values.description !== undefined) {
+        changes.description = values.description || null;
+      }
+      if (values.isPublic !== undefined) {
+        changes.isPublic = values.isPublic;
+      }
+      await conversationsRepository.updateConversation(conversationId, changes);
+      await notifyChanged(conversationId, 'channel-updated');
+      return this.get(userId, conversationId);
+    },
+
+    async discoverChannels(userId, query) {
+      const rows = await conversationsRepository.searchPublicChannels(userId, query, 20);
+      return rows.map(toChannelListing);
+    },
+
+    /** Subscribe to a public channel. Joining twice is harmless. */
+    async joinChannel(userId, conversationId) {
+      const conversation = await conversationsRepository.findById(conversationId);
+      if (!conversation || !conversation.broadcast || !conversation.isPublic) {
+        throw notFound('Channel not found');
+      }
+      if (!(await conversationsRepository.findMember(conversationId, userId))) {
+        const count = (await conversationsRepository.listMemberIds(conversationId)).length;
+        if (count >= MAX_CHANNEL_MEMBERS) {
+          throw conflict('CHANNEL_FULL', 'This channel has reached its subscriber limit');
+        }
+        await conversationsRepository.addMembers(conversationId, [userId]);
+        await notifyChanged(conversationId, 'members-added', { added: [userId] });
+      }
+      return this.get(userId, conversationId);
     },
 
     async rename(userId, conversationId, name) {
@@ -200,9 +265,12 @@ export function createConversationsService({
       await requireGroupManager(conversationId, userId);
       const existing = new Set(await conversationsRepository.listMemberIds(conversationId));
       const fresh = [...new Set(userIds)].filter((id) => !existing.has(id));
-      if (existing.size + fresh.length > MAX_GROUP_MEMBERS) {
+      const limit = (await conversationsRepository.findById(conversationId)).broadcast
+        ? MAX_CHANNEL_MEMBERS
+        : MAX_GROUP_MEMBERS;
+      if (existing.size + fresh.length > limit) {
         throw validationFailed([
-          { path: 'userIds', message: `Groups can have at most ${MAX_GROUP_MEMBERS} members` },
+          { path: 'userIds', message: `This conversation can have at most ${limit} members` },
         ]);
       }
       await ensureUsersExist(fresh);

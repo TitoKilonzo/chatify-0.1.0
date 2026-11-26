@@ -17,6 +17,13 @@ const corsOrigins = z
   )
   .pipe(z.array(origin).min(1));
 
+const csvList = z.string().transform((text) =>
+  text
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean),
+);
+
 const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -70,6 +77,16 @@ const envSchema = z
       .optional()
       .transform((value) => value || undefined)
       .pipe(z.union([z.url(), z.undefined()])),
+    // Calls. STUN finds a direct path; TURN relays media when there is none (needed on strict
+    // networks). TURN credentials are short-lived and derived from TURN_SECRET (coturn
+    // use-auth-secret).
+    STUN_URLS: csvList.default(['stun:stun.l.google.com:19302']),
+    TURN_URLS: csvList.default([]),
+    TURN_SECRET: z
+      .string()
+      .optional()
+      .transform((value) => value || undefined),
+    TURN_TTL_SECONDS: z.coerce.number().int().min(300).default(86400),
     // Phone sign-in. none turns it off; console prints codes to the log (development only);
     // africastalking sends real SMS.
     SMS_PROVIDER: z.enum(['none', 'console', 'africastalking']).default('none'),
@@ -110,6 +127,13 @@ const envSchema = z
         code: 'custom',
         path: ['SMS_PROVIDER'],
         message: 'console prints sign-in codes to the log and cannot be used in production',
+      });
+    }
+    if (value.TURN_URLS.length > 0 && !value.TURN_SECRET) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['TURN_SECRET'],
+        message: 'is required when TURN_URLS is set',
       });
     }
     const vapid = ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT'];

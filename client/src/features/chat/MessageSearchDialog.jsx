@@ -26,7 +26,6 @@ export function MessageSearchDialog({ open, onClose }) {
     [conversations.data],
   );
   const enabled = open && debounced.length >= MIN_LENGTH;
-  const isDebouncing = term.trim() !== debounced;
   const results = useQuery({
     queryKey: ['message-search', debounced],
     queryFn: () => api.get(`/search/messages?q=${encodeURIComponent(debounced)}`),
@@ -61,7 +60,7 @@ export function MessageSearchDialog({ open, onClose }) {
             <p className={styles.note}>Type at least {MIN_LENGTH} characters.</p>
           ) : results.isError ? (
             <Alert>{results.error.message}</Alert>
-          ) : !enabled || isDebouncing || results.isPending ? (
+          ) : !enabled || results.isPending ? (
             <p className={styles.note}>Searching...</p>
           ) : results.data.messages.length === 0 ? (
             <p className={styles.note}>No messages found.</p>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useOutletContext, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Info, Lock, Paperclip, Pin } from 'lucide-react';
+import { ArrowLeft, Info, Lock, Megaphone, Paperclip, Phone, Pin, Video } from 'lucide-react';
+import { startCall, useCall } from '../../lib/calls.js';
 import { Alert } from '../../components/ui/Alert.jsx';
 import { Avatar } from '../../components/ui/Avatar.jsx';
 import { Button } from '../../components/ui/Button.jsx';
@@ -77,6 +78,8 @@ function OpenConversation({ conversation, meId, section }) {
   const myRole = conversation.role;
   // Direct chats: anyone may pin. Groups: owners and admins only (the server enforces it).
   const canPin = !isGroup || myRole === 'owner' || myRole === 'admin';
+  // Channels are read-only for subscribers; only owners and admins can post.
+  const canPost = !conversation.channel || myRole !== 'member';
   const [dragging, setDragging] = useState(false);
   const dragDepth = useRef(0);
 
@@ -215,6 +218,8 @@ function OpenConversation({ conversation, meId, section }) {
               loadingOlder={state.loading}
               meId={meId}
               isGroup={isGroup}
+              channel={Boolean(conversation.channel)}
+              canReply={canPost}
               names={names}
               canPin={canPin}
               highlightId={highlightId}
@@ -231,13 +236,19 @@ function OpenConversation({ conversation, meId, section }) {
           ) : null}
         </div>
 
-        <Composer
-          ref={composerRef}
-          conversationId={conversationId}
-          meId={meId}
-          names={names}
-          onSent={() => listRef.current?.scrollToBottom()}
-        />
+        {canPost ? (
+          <Composer
+            ref={composerRef}
+            conversationId={conversationId}
+            meId={meId}
+            names={names}
+            onSent={() => listRef.current?.scrollToBottom()}
+          />
+        ) : (
+          <p className={styles.readOnly} role="status">
+            Only admins can post in this channel.
+          </p>
+        )}
 
         <PinsDialog
           open={showPins}
@@ -276,6 +287,15 @@ function Header({ conversation, names, onBack, onInfo, onPins }) {
   const isGroup = conversation.type === 'group';
   const title = conversationTitle(conversation);
   const presence = effectivePresence(conversation.counterpart, live);
+  const busy = useCall((state) => state.phase !== 'idle');
+  const [callError, setCallError] = useState(null);
+  const callsSupported =
+    typeof RTCPeerConnection !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia);
+
+  function place(video) {
+    setCallError(null);
+    startCall(conversation.id, video).catch((err) => setCallError(err.message));
+  }
 
   const typingNames = (typingIds ?? []).map((id) => names[id]).filter(Boolean);
   let subtitle;
@@ -284,7 +304,9 @@ function Header({ conversation, names, onBack, onInfo, onPins }) {
       ? `${typingNames.slice(0, 2).join(' and ')} ${typingNames.length > 1 ? 'are' : 'is'} typing...`
       : 'typing...';
   } else if (isGroup) {
-    subtitle = `${conversation.memberCount} members`;
+    subtitle = conversation.channel
+      ? `${conversation.memberCount} ${conversation.memberCount === 1 ? 'subscriber' : 'subscribers'}`
+      : `${conversation.memberCount} members`;
   } else {
     subtitle = presence.status === 'online' ? 'Online' : formatLastSeen(presence.lastSeenAt);
   }
@@ -303,6 +325,9 @@ function Header({ conversation, names, onBack, onInfo, onPins }) {
       />
       <div className={styles.titles}>
         <h1 className={styles.title}>
+          {conversation.channel ? (
+            <Megaphone size={14} aria-label="Channel" className={styles.lock} />
+          ) : null}
           {conversation.encrypted ? (
             <Lock size={14} aria-label="End-to-end encrypted" className={styles.lock} />
           ) : null}
@@ -312,6 +337,22 @@ function Header({ conversation, names, onBack, onInfo, onPins }) {
           {subtitle}
         </p>
       </div>
+      {isGroup || !callsSupported ? null : (
+        <>
+          <IconButton
+            label="Voice call"
+            icon={Phone}
+            disabled={busy}
+            onClick={() => place(false)}
+          />
+          <IconButton label="Video call" icon={Video} disabled={busy} onClick={() => place(true)} />
+        </>
+      )}
+      {callError ? (
+        <span className={styles.callError} role="alert">
+          {callError}
+        </span>
+      ) : null}
       <IconButton label="Pinned messages" icon={Pin} onClick={onPins} />
       <IconButton label="Conversation details" icon={Info} onClick={onInfo} />
     </header>

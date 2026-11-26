@@ -131,11 +131,18 @@ export function createConversationsRepository(db) {
       }
     },
 
-    async createGroup({ name, createdBy, memberIds }) {
+    async createGroup({
+      name,
+      createdBy,
+      memberIds,
+      broadcast = false,
+      description = null,
+      isPublic = false,
+    }) {
       return db.transaction(async (tx) => {
         const [row] = await tx
           .insert(conversations)
-          .values({ type: 'group', name, createdBy })
+          .values({ type: 'group', name, createdBy, broadcast, description, isPublic })
           .returning();
         await tx.insert(conversationMembers).values([
           { conversationId: row.id, userId: createdBy, role: 'owner' },
@@ -147,6 +154,35 @@ export function createConversationsRepository(db) {
         ]);
         return row;
       });
+    },
+
+    /** Public channels whose name or description contains the text, minus the ones already joined. */
+    async searchPublicChannels(userId, query, limit) {
+      const pattern = `%${query.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+      const rows = await db
+        .select({
+          conversation: conversations,
+          memberCount: sql`count(${conversationMembers.userId})`,
+        })
+        .from(conversations)
+        .innerJoin(conversationMembers, eq(conversationMembers.conversationId, conversations.id))
+        .where(
+          and(
+            eq(conversations.broadcast, true),
+            eq(conversations.isPublic, true),
+            query
+              ? sql`(${conversations.name} LIKE ${pattern} ESCAPE '\\' OR ${conversations.description} LIKE ${pattern} ESCAPE '\\')`
+              : sql`1 = 1`,
+            sql`${conversations.id} NOT IN (SELECT conversation_id FROM conversation_members WHERE user_id = ${userId})`,
+          ),
+        )
+        .groupBy(conversations.id)
+        .orderBy(sql`count(${conversationMembers.userId}) DESC`, sql`${conversations.id} DESC`)
+        .limit(limit);
+      return rows.map((row) => ({
+        conversation: row.conversation,
+        memberCount: Number(row.memberCount),
+      }));
     },
 
     async updateConversation(id, values) {

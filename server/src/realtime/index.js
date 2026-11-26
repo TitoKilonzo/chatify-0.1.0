@@ -18,6 +18,27 @@ const readPayload = z.object({
   upToMessageId: z.number().int().positive().optional(),
 });
 const typingPayload = z.object({ conversationId: z.uuid(), typing: z.boolean() });
+const invitePayload = z.object({ conversationId: z.uuid(), video: z.boolean().default(false) });
+const callIdPayload = z.object({ callId: z.uuid() });
+// What two browsers exchange to set up a call: a session description or an ICE candidate.
+const signalPayload = z.object({
+  callId: z.uuid(),
+  data: z.union([
+    z.object({
+      description: z.object({ type: z.enum(['offer', 'answer']), sdp: z.string().max(30000) }),
+    }),
+    z.object({
+      candidate: z
+        .object({
+          candidate: z.string().max(2000),
+          sdpMid: z.string().max(100).nullish(),
+          sdpMLineIndex: z.number().int().min(0).max(64).nullish(),
+          usernameFragment: z.string().max(100).nullish(),
+        })
+        .nullable(),
+    }),
+  ]),
+});
 
 function handshakeError(code) {
   const err = new Error(code);
@@ -66,6 +87,7 @@ export async function attachRealtime({
     usersRepository,
     conversationsRepository,
     messagesService,
+    callsService,
   } = container;
 
   const allowedOrigins = new Set(env.CORS_ORIGINS);
@@ -139,18 +161,22 @@ export async function attachRealtime({
     try {
       const cookies = parseCookie(socket.request.headers.cookie ?? '');
       const token = cookies[ACCESS_COOKIE];
-      const userId = token ? accessTokens.verify(token) : null;
+      const claims = token ? accessTokens.claims(token) : null;
+      const userId = claims?.userId ?? null;
       if (!userId) {
         next(handshakeError('UNAUTHENTICATED'));
         return;
       }
-      const active = await refreshTokensRepository.hasActiveForUser(userId, new Date());
+      const active = claims.sessionId
+        ? await refreshTokensRepository.isSessionActive(userId, claims.sessionId, new Date())
+        : await refreshTokensRepository.hasActiveForUser(userId, new Date());
       const user = active ? await usersRepository.findById(userId) : null;
       if (!user) {
         next(handshakeError('SESSION_REVOKED'));
         return;
       }
       socket.data.userId = userId;
+      socket.data.sessionId = claims.sessionId;
       next();
     } catch (err) {
       logger.error({ err }, 'socket auth failed');
@@ -165,6 +191,8 @@ export async function attachRealtime({
     registry.add(userId, socket);
     const sendWindow = createRateWindow({ max: 20, windowMs: 10_000 });
     const signalWindow = createRateWindow({ max: 40, windowMs: 10_000 });
+    // ICE candidates arrive in bursts, so call signaling has its own, larger allowance.
+    const callWindow = createRateWindow({ max: 120, windowMs: 10_000 });
 
     presence.connected(userId).catch((err) => logger.error({ err }, 'presence connect failed'));
     conversationsRepository
@@ -177,6 +205,54 @@ export async function attachRealtime({
         ack(payload);
       }
     }
+
+    callsService.userOnline(userId);
+    // A call that is ringing for this user (they just opened the app, or reconnected) rings here too.
+    const waiting = callsService.current(userId);
+    if (waiting?.state === 'ringing' && waiting.calleeId === userId) {
+      socket.emit('call:incoming', { call: waiting });
+    }
+
+    function callHandler(schema, run) {
+      return async (payload, ack) => {
+        if (!callWindow.allow()) {
+          reply(ack, { ok: false, error: { code: 'RATE_LIMITED', message: 'Slow down' } });
+          return;
+        }
+        try {
+          const result = await run(schema.parse(payload));
+          reply(ack, { ok: true, ...result });
+        } catch (err) {
+          reply(ack, { ok: false, error: toErrorPayload(err, logger) });
+        }
+      };
+    }
+
+    socket.on(
+      'call:invite',
+      callHandler(invitePayload, async (input) => ({
+        call: await callsService.invite(userId, input),
+      })),
+    );
+    socket.on(
+      'call:accept',
+      callHandler(callIdPayload, ({ callId }) => ({ call: callsService.accept(userId, callId) })),
+    );
+    socket.on(
+      'call:end',
+      callHandler(callIdPayload, ({ callId }) => {
+        callsService.end(userId, callId);
+        return {};
+      }),
+    );
+    socket.on(
+      'call:signal',
+      callHandler(signalPayload, ({ callId, data }) => {
+        const { peerId } = callsService.peerFor(userId, callId);
+        emitToUsers([peerId], 'call:signal', { callId, data });
+        return {};
+      }),
+    );
 
     socket.on('message:send', async (payload, ack) => {
       if (!sendWindow.allow()) {
@@ -230,6 +306,9 @@ export async function attachRealtime({
         typing.stopAllForUser(userId);
       }
       presence.disconnected(userId);
+      if (!registry.isOnline(userId)) {
+        callsService.userOffline(userId);
+      }
     });
   });
 
@@ -251,6 +330,18 @@ export async function attachRealtime({
           });
         }
       }
+    }),
+
+    events.subscribe('call.incoming', ({ call }) => {
+      emitToUsers([call.calleeId], 'call:incoming', { call });
+    }),
+
+    events.subscribe('call.accepted', ({ call }) => {
+      emitToUsers([call.callerId, call.calleeId], 'call:accepted', { call });
+    }),
+
+    events.subscribe('call.ended', ({ call, reason, endedBy }) => {
+      emitToUsers([call.callerId, call.calleeId], 'call:ended', { call, reason, endedBy });
     }),
 
     events.subscribe('message.updated', ({ message, memberIds }) => {
@@ -297,9 +388,12 @@ export async function attachRealtime({
       emitToUsers([userId, ...peers], 'user:updated', { userId });
     }),
 
-    events.subscribe('user.sessions-revoked', ({ userId }) => {
+    events.subscribe('user.sessions-revoked', ({ userId, sessionIds }) => {
+      const only = sessionIds ? new Set(sessionIds) : null;
       for (const socket of [...registry.forUser(userId)]) {
-        socket.disconnect(true);
+        if (!only || only.has(socket.data.sessionId)) {
+          socket.disconnect(true);
+        }
       }
     }),
   ];
@@ -309,6 +403,7 @@ export async function attachRealtime({
     registry,
     close() {
       unsubscribe.forEach((off) => off());
+      callsService.stop();
       presence.stop();
       typing.clear();
       // io.close() also closes the underlying HTTP server.

@@ -8,12 +8,12 @@ import styles from './AuthLayout.module.css';
 const POINTS = [
   { icon: Zap, text: 'Messages, receipts and typing update live' },
   { icon: Users, text: 'Chat one to one or with the whole group' },
-  { icon: ShieldCheck, text: 'Secure account access and checked file uploads' },
+  { icon: ShieldCheck, text: 'Secure sign-in and checked file uploads' },
 ];
 
 /** Split layout for sign-in and registration: a 3D showcase beside a focused form card. */
 export function AuthLayout({ title, description, footerText, footerLink, children }) {
-  usePageTitle(title, ' | ');
+  usePageTitle(title);
   const showcaseRef = useRef(null);
 
   // The scene leans slightly toward the pointer. Skipped when the user prefers reduced motion.

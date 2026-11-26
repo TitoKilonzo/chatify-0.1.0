@@ -1,5 +1,13 @@
 import { useMemo, useRef, useState } from 'react';
-import { MessageSquarePlus, Plus, Search, TextSearch, Users } from 'lucide-react';
+import {
+  Compass,
+  Megaphone,
+  MessageSquarePlus,
+  Plus,
+  Search,
+  TextSearch,
+  Users,
+} from 'lucide-react';
 import { Alert } from '../../components/ui/Alert.jsx';
 import { Button } from '../../components/ui/Button.jsx';
 import { IconButton } from '../../components/ui/IconButton.jsx';
@@ -10,6 +18,8 @@ import { cx } from '../../lib/cx.js';
 import { ConversationListItem } from './ConversationListItem.jsx';
 import { MessageSearchDialog } from './MessageSearchDialog.jsx';
 import { NewChatDialog } from './NewChatDialog.jsx';
+import { DiscoverChannelsDialog } from './DiscoverChannelsDialog.jsx';
+import { NewChannelDialog } from './NewChannelDialog.jsx';
 import { NewGroupDialog } from './NewGroupDialog.jsx';
 import { useConversationsQuery } from './useConversations.js';
 import styles from './ConversationList.module.css';
@@ -48,6 +58,13 @@ export function ConversationList({ scope, meId, searchRef }) {
       onSelect: () => setDialog('chat'),
     },
     { id: 'group', label: 'New group', icon: Users, onSelect: () => setDialog('group') },
+    { id: 'channel', label: 'New channel', icon: Megaphone, onSelect: () => setDialog('channel') },
+    {
+      id: 'discover',
+      label: 'Find channels',
+      icon: Compass,
+      onSelect: () => setDialog('discover'),
+    },
   ];
 
   return (
@@ -129,6 +146,8 @@ export function ConversationList({ scope, meId, searchRef }) {
       <MessageSearchDialog open={dialog === 'messages'} onClose={() => setDialog(null)} />
       <NewChatDialog open={dialog === 'chat'} onClose={() => setDialog(null)} />
       <NewGroupDialog open={dialog === 'group'} onClose={() => setDialog(null)} />
+      <NewChannelDialog open={dialog === 'channel'} onClose={() => setDialog(null)} />
+      <DiscoverChannelsDialog open={dialog === 'discover'} onClose={() => setDialog(null)} />
     </div>
   );
 }

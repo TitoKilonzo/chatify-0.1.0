@@ -36,3 +36,5 @@ export const loginBody = z.object({
 });
 
 export { displayName as displayNameSchema };
+
+export const sessionIdParams = z.object({ sessionId: z.string().min(1).max(64) });

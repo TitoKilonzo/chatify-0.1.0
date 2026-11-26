@@ -43,9 +43,18 @@ async function shot(page, name) {
   }
 }
 
-const browser = await chromium.launch();
-const ctxA = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-const ctxB = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+// Fake camera and microphone so the call check can run without hardware or prompts.
+const browser = await chromium.launch({
+  args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'],
+});
+const ctxA = await browser.newContext({
+  viewport: { width: 1280, height: 800 },
+  permissions: ['camera', 'microphone'],
+});
+const ctxB = await browser.newContext({
+  viewport: { width: 1280, height: 800 },
+  permissions: ['camera', 'microphone'],
+});
 const a = await ctxA.newPage();
 const b = await ctxB.newPage();
 a.on('pageerror', (err) => check(`no page error in A (${err.message})`, false));
@@ -214,6 +223,53 @@ try {
   await b.getByRole('log').getByText('secret handshake').waitFor({ timeout: 10000 });
   check('Bob decrypts the message in his browser', true);
   await shot(a, '07-phase2-encrypted');
+
+  // Phase 3: a voice call between the two browsers.
+  await a.getByRole('button', { name: 'Voice call' }).click();
+  await b.getByText('Incoming voice call').waitFor({ timeout: 8000 });
+  await b.getByRole('button', { name: 'Answer' }).click();
+  const timer = /^\d+:\d\d$/;
+  await a
+    .getByRole('dialog')
+    .getByRole('status')
+    .filter({ hasText: timer })
+    .waitFor({ timeout: 20000 });
+  await b
+    .getByRole('dialog')
+    .getByRole('status')
+    .filter({ hasText: timer })
+    .waitFor({ timeout: 20000 });
+  check('a voice call connects on both sides', true);
+  await shot(a, '08-phase3-call');
+  await a.getByRole('button', { name: 'End call' }).click();
+  await b.getByRole('dialog').waitFor({ state: 'detached', timeout: 8000 });
+  check('ending the call closes it for the other person', true);
+
+  // Phase 3: a channel Alice posts to and Bob only reads.
+  await a.goto(`${BASE_URL}/groups`);
+  await a.getByRole('button', { name: 'Start a conversation' }).click();
+  await a.getByRole('menuitem', { name: 'New channel' }).click();
+  await a.getByLabel('Channel name').fill(`News ${suffix}`);
+  await a.getByRole('button', { name: 'Create channel' }).click();
+  await a.waitForURL(/\/groups\/[0-9a-f-]{36}/);
+  await a.getByLabel('Message', { exact: true }).fill('Welcome to the channel');
+  await a.getByRole('button', { name: 'Send message' }).click();
+  await a.getByRole('log').getByText('Welcome to the channel').waitFor({ timeout: 5000 });
+
+  await b.goto(`${BASE_URL}/groups`);
+  await b.getByRole('button', { name: 'Start a conversation' }).click();
+  await b.getByRole('menuitem', { name: 'Find channels' }).click();
+  await b.getByLabel('Search channels').fill(`News ${suffix}`);
+  await b.getByRole('button', { name: 'Join' }).click();
+  await b.waitForURL(/\/groups\/[0-9a-f-]{36}/);
+  await b.getByRole('log').getByText('Welcome to the channel').waitFor({ timeout: 5000 });
+  check('Bob joins the channel and reads the post', true);
+  check(
+    'Bob cannot post in the channel',
+    (await b.getByText('Only admins can post in this channel.').count()) === 1 &&
+      (await b.getByLabel('Message', { exact: true }).count()) === 0,
+  );
+  await shot(b, '09-phase3-channel');
 
   // Mobile layout: list and pane are separate screens with a back button.
   const phone = await browser.newContext({ viewport: { width: 390, height: 780 } });

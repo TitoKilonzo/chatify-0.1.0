@@ -8,6 +8,7 @@ import { cx } from '../lib/cx.js';
 import { useLogout, useSession } from '../features/auth/useSession.js';
 import { Announcer, ConnectionBanner } from '../features/chat/LiveRegions.jsx';
 import { useConversationsQuery } from '../features/chat/useConversations.js';
+import { CallOverlay } from '../features/chat/CallOverlay.jsx';
 import { useRealtime } from '../features/chat/useRealtime.js';
 import styles from './AppShell.module.css';
 
@@ -88,6 +89,7 @@ export function AppShell() {
           <Outlet />
         </ErrorBoundary>
       </main>
+      <CallOverlay />
     </div>
   );
 }

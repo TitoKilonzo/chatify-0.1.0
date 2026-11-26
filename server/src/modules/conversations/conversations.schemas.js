@@ -10,6 +10,19 @@ export const createGroupBody = z.object({
   name: groupName,
   memberIds: z.array(z.uuid()).min(1).max(255),
 });
+const channelDescription = z.string().trim().max(300);
+export const createChannelBody = z.object({
+  name: groupName,
+  description: channelDescription.optional(),
+  isPublic: z.boolean().default(false),
+  memberIds: z.array(z.uuid()).max(255).default([]),
+});
+export const updateChannelBody = z
+  .object({ description: channelDescription.optional(), isPublic: z.boolean().optional() })
+  .refine((value) => value.description !== undefined || value.isPublic !== undefined, {
+    message: 'Provide a description or isPublic',
+  });
+export const channelSearchQuery = z.object({ q: z.string().trim().max(60).default('') });
 export const renameGroupBody = z.object({ name: groupName });
 export const DISAPPEAR_CHOICES = [0, 3600, 86400, 604800, 2592000];
 export const disappearingBody = z.object({

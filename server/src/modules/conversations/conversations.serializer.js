@@ -23,6 +23,9 @@ export function toConversationSummary({
     avatarUrl: conversation.type === 'group' ? groupAvatarUrl(conversation) : null,
     counterpart: counterpart ? toPublicUser(counterpart) : null,
     memberCount,
+    channel: Boolean(conversation.broadcast),
+    description: conversation.broadcast ? (conversation.description ?? null) : null,
+    isPublic: Boolean(conversation.broadcast && conversation.isPublic),
     role: member.role,
     unreadCount,
     archived: Boolean(member.archivedAt),
@@ -32,6 +35,17 @@ export function toConversationSummary({
     lastMessage: lastMessage ? toLastMessage(lastMessage) : null,
     lastMessageAt: conversation.lastMessageAt,
     createdAt: conversation.createdAt,
+  };
+}
+
+/** A public channel as shown in discovery: enough to decide whether to join. */
+export function toChannelListing({ conversation, memberCount }) {
+  return {
+    id: conversation.id,
+    name: conversation.name,
+    description: conversation.description ?? null,
+    avatarUrl: groupAvatarUrl(conversation),
+    memberCount,
   };
 }
 

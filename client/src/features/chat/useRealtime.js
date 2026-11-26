@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../../lib/api.js';
 import { applyIncomingMessage, conversationTitle } from '../../lib/conversation-cache.js';
+import { bindCalls, resetCalls } from '../../lib/calls.js';
 import { closeSocket, openSocket } from '../../lib/socket.js';
 import { useMessageStore } from '../../stores/messageStore.js';
 import {
@@ -113,6 +114,7 @@ export function useRealtime(meId) {
     });
 
     socket.io.on('reconnect_attempt', () => setStatus('connecting'));
+    bindCalls(socket, meId);
 
     socket.on('message:new', ({ message }, ack) => {
       // Acknowledging is what marks the message delivered for the sender.
@@ -207,6 +209,7 @@ export function useRealtime(meId) {
       stopped = true;
       clearTimeout(retryTimer);
       closeSocket();
+      resetCalls();
       resetMessageActions();
       useMessageStore.getState().reset();
       usePresenceStore.getState().reset();

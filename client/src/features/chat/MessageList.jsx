@@ -21,6 +21,8 @@ export function MessageList({
   loadingOlder,
   meId,
   isGroup,
+  channel = false,
+  canReply = true,
   names,
   canPin,
   highlightId,
@@ -111,6 +113,8 @@ export function MessageList({
               continued={continuesRun(messages, position)}
               senderName={names[message.senderId] ?? 'Former member'}
               isGroup={isGroup}
+              channel={channel}
+              canReply={canReply}
             />
           );
         }}

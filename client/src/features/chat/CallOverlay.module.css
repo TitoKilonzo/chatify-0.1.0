@@ -1,0 +1,74 @@
+.overlay {
+  position: fixed;
+  inset: auto var(--space-4) var(--space-4) auto;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(360px, calc(100vw - 32px));
+  padding: var(--space-4);
+  border-radius: 16px;
+  background: var(--surface-inverse);
+  color: var(--text-inverse);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.3);
+}
+
+.remote {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 12px;
+  background: var(--surface-inverse-hover);
+  object-fit: cover;
+}
+
+.hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.local {
+  position: absolute;
+  top: calc(var(--space-4) + var(--space-2));
+  right: calc(var(--space-4) + var(--space-2));
+  width: 88px;
+  aspect-ratio: 3 / 4;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--surface-inverse-hover);
+}
+
+.info {
+  text-align: center;
+}
+
+.name {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.status {
+  margin: var(--space-1) 0 0;
+  color: var(--text-inverse-muted);
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+}
+
+.notice {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 50;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: 12px;
+  background: var(--surface-inverse);
+  color: var(--text-inverse);
+}

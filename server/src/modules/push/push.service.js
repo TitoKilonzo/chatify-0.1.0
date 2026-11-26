@@ -119,5 +119,21 @@ export function createPushService({
     },
 
     notify,
+
+    /** Tell someone who is not in the app that a call is ringing. Resolves when sent or skipped. */
+    async notifyCall(userId, { callerName, video, conversationId }) {
+      if (!send || isOnline(userId)) {
+        return;
+      }
+      const subscriptions = await repository.listForUsers([userId]);
+      const payload = JSON.stringify({
+        title: callerName,
+        body: video ? 'Incoming video call' : 'Incoming voice call',
+        conversationId,
+        url: `/chats/${conversationId}`,
+        tag: `call-${conversationId}`,
+      });
+      await Promise.all(subscriptions.map((row) => deliver(row, payload)));
+    },
   };
 }

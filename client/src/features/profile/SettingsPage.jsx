@@ -2,6 +2,7 @@ import { InstallButton } from '../../components/InstallButton.jsx';
 import { useInstallState } from '../../lib/pwa.js';
 import { useSession } from '../auth/useSession.js';
 import { SHORTCUTS } from '../chat/useShortcuts.js';
+import { DevicesSection } from './DevicesSection.jsx';
 import { EncryptionKeysSection } from './EncryptionKeysSection.jsx';
 import { DataSaverSection } from './DataSaverSection.jsx';
 import { PhoneSection } from './PhoneSection.jsx';
@@ -19,6 +20,7 @@ export function SettingsPage() {
       <h1 className={styles.title}>Settings</h1>
       <ProfileForm user={user} />
       <PasswordForm />
+      <DevicesSection />
       <PhoneSection />
       <NotificationsSection />
       <EncryptionKeysSection userId={user.id} />

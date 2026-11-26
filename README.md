@@ -75,27 +75,28 @@ Database schema changes: edit `server/src/db/schema.js`, then
 All configuration is environment variables, validated once at start-up. A bad configuration stops
 the server with one message listing every problem. See `server/.env.example`.
 
-| Variable                                                 | Default                  | Notes                                                                                                    |
-| -------------------------------------------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------- |
-| `NODE_ENV`                                               | `development`            | `production` turns on Secure cookies and requires a Turso URL                                            |
-| `PORT`                                                   | `4000`                   |                                                                                                          |
-| `LOG_LEVEL`                                              | `info`                   | pino levels                                                                                              |
-| `CORS_ORIGINS`                                           | `http://localhost:5173`  | Comma-separated origins (scheme, host, port; no path). Also the websocket and CSRF origin allow-list     |
-| `DATABASE_URL`                                           | `file:./data/chatify.db` | `libsql://...` for Turso. A local file is refused in production                                          |
-| `DATABASE_AUTH_TOKEN`                                    | -                        | Required for a remote database                                                                           |
-| `JWT_ACCESS_SECRET`                                      | required                 | At least 32 characters. Also keys the CSRF token signature                                               |
-| `ACCESS_TOKEN_TTL_SECONDS`                               | `900`                    |                                                                                                          |
-| `REFRESH_TOKEN_TTL_SECONDS`                              | `604800`                 |                                                                                                          |
-| `LOGIN_MAX_FAILURES`                                     | `5`                      | Consecutive failures before the account locks                                                            |
-| `LOGIN_LOCKOUT_MINUTES`                                  | `15`                     |                                                                                                          |
-| `AUTH_RATE_LIMIT_MAX`                                    | `30`                     | Credential requests per IP per 15 minutes                                                                |
-| `TRUST_PROXY`                                            | `0`                      | Number of reverse proxies in front of the server                                                         |
-| `UPLOAD_DIR`                                             | `./data/uploads`         | Must be on persistent storage                                                                            |
-| `MAX_UPLOAD_BYTES`                                       | `26214400`               | 25 MB                                                                                                    |
-| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | -                        | Web Push. Set all three or none. Generate with `npm run vapid -w server`                                 |
-| `MAX_RESUMABLE_BYTES`                                    | see `.env.example`       | Largest file accepted through resumable uploads                                                          |
-| `SMS_PROVIDER`, `SMS_DEFAULT_COUNTRY_CODE`, `AT_*`       | `none`                   | Phone sign-in. `none` hides it; `console` logs codes (development only); `africastalking` sends real SMS |
-| `CLIENT_DIST_DIR`                                        | -                        | When set, the server also serves the built client with SPA fallback                                      |
+| Variable                                                    | Default                  | Notes                                                                                                                                       |
+| ----------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                                                  | `development`            | `production` turns on Secure cookies and requires a Turso URL                                                                               |
+| `PORT`                                                      | `4000`                   |                                                                                                                                             |
+| `LOG_LEVEL`                                                 | `info`                   | pino levels                                                                                                                                 |
+| `CORS_ORIGINS`                                              | `http://localhost:5173`  | Comma-separated origins (scheme, host, port; no path). Also the websocket and CSRF origin allow-list                                        |
+| `DATABASE_URL`                                              | `file:./data/chatify.db` | `libsql://...` for Turso. A local file is refused in production                                                                             |
+| `DATABASE_AUTH_TOKEN`                                       | -                        | Required for a remote database                                                                                                              |
+| `JWT_ACCESS_SECRET`                                         | required                 | At least 32 characters. Also keys the CSRF token signature                                                                                  |
+| `ACCESS_TOKEN_TTL_SECONDS`                                  | `900`                    |                                                                                                                                             |
+| `REFRESH_TOKEN_TTL_SECONDS`                                 | `604800`                 |                                                                                                                                             |
+| `LOGIN_MAX_FAILURES`                                        | `5`                      | Consecutive failures before the account locks                                                                                               |
+| `LOGIN_LOCKOUT_MINUTES`                                     | `15`                     |                                                                                                                                             |
+| `AUTH_RATE_LIMIT_MAX`                                       | `30`                     | Credential requests per IP per 15 minutes                                                                                                   |
+| `TRUST_PROXY`                                               | `0`                      | Number of reverse proxies in front of the server                                                                                            |
+| `UPLOAD_DIR`                                                | `./data/uploads`         | Must be on persistent storage                                                                                                               |
+| `MAX_UPLOAD_BYTES`                                          | `26214400`               | 25 MB                                                                                                                                       |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`    | -                        | Web Push. Set all three or none. Generate with `npm run vapid -w server`                                                                    |
+| `MAX_RESUMABLE_BYTES`                                       | see `.env.example`       | Largest file accepted through resumable uploads                                                                                             |
+| `SMS_PROVIDER`, `SMS_DEFAULT_COUNTRY_CODE`, `AT_*`          | `none`                   | Phone sign-in. `none` hides it; `console` logs codes (development only); `africastalking` sends real SMS                                    |
+| `STUN_URLS`, `TURN_URLS`, `TURN_SECRET`, `TURN_TTL_SECONDS` | Google STUN, no TURN     | Calls. TURN relays media on strict networks; `TURN_SECRET` is the coturn `static-auth-secret`. Credentials sent to browsers are short-lived |
+| `CLIENT_DIST_DIR`                                           | -                        | When set, the server also serves the built client with SPA fallback                                                                         |
 
 ## Architecture
 
@@ -484,6 +485,36 @@ Limits, by design:
 - Keys are extractable inside the browser (needed for backup), so a compromised browser profile
   exposes them. Turning encryption on does not re-encrypt earlier messages.
 
+## Devices
+
+Settings lists every browser signed in to the account with its last activity, and lets you sign
+out one device or all the others. Each sign-in is a session that keeps one id as its refresh token
+rotates. Ending a session revokes it and drops that device's live connection at once; it cannot
+reconnect, and it is not mistaken for token theft (which would sign out everything). Limit: the
+device's short-lived access token keeps working for REST calls until it expires (15 minutes by
+default); only realtime is cut immediately.
+
+## Channels
+
+A channel is a group where only the owner and admins post. Everyone else subscribes, reads, and
+reacts. Create one from the plus menu; make it public to appear in "Find channels", or keep it
+private and add people yourself. Subscribers see the admins but not each other. Channels hold up to
+2000 subscribers, have no threads, and can use disappearing messages. Roles, members and leaving
+work as in groups.
+
+## Calls
+
+Direct chats have voice and video calls. The browsers connect to each other with WebRTC (media is
+encrypted in transit by DTLS-SRTP and never touches the server); the server only rings, relays the
+connection setup, and reports when a call ends. An unanswered call ends after 45 seconds, and a call
+whose participant loses their connection for 8 seconds is ended. Someone with the app closed gets a
+push notification if push is configured.
+
+Calls work between most networks with STUN alone. On strict NATs and many mobile networks a TURN
+relay is needed; run coturn with `use-auth-secret` and set `TURN_URLS` and `TURN_SECRET` (see
+`.env.example`). Limits: one call at a time per person, no group calls, no screen sharing, and call
+state is in memory, so a restart ends calls and a multi-instance deployment needs shared state.
+
 ## Known limits
 
 - Realtime state (connected sockets, presence, typing) lives in process memory, so run a single
@@ -491,7 +522,7 @@ Limits, by design:
   stores; the event bus and registry are the two seams to change.
 - Uploaded files use local disk. For multiple instances or ephemeral hosts, implement the
   `StorageDriver` interface for S3-compatible storage.
-- Encryption has the limits listed above. Calls, device management and channels are not built yet.
+- Encryption, calls and channels have the limits listed in their sections.
 
 ## Public site and installable app
 

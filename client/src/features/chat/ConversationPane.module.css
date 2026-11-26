@@ -107,3 +107,18 @@
   margin-right: var(--space-1);
   vertical-align: baseline;
 }
+
+.readOnly {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  text-align: center;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-default);
+  background: var(--surface-raised);
+}
+
+.callError {
+  max-width: 220px;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}

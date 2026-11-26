@@ -18,8 +18,8 @@ export function hashToken(token) {
  * cannot downgrade to "none" or switch to an asymmetric algorithm.
  */
 export function createAccessTokens({ secret, ttlSeconds }) {
-  function sign(userId) {
-    return jwt.sign({}, secret, {
+  function sign(userId, sessionId) {
+    return jwt.sign(sessionId ? { sid: sessionId } : {}, secret, {
       algorithm: ALGORITHM,
       issuer: ISSUER,
       subject: userId,
@@ -37,5 +37,21 @@ export function createAccessTokens({ secret, ttlSeconds }) {
     }
   }
 
-  return { sign, verify };
+  /** Like verify, but also returns the session id the token was issued for (null if none). */
+  function claims(token) {
+    try {
+      const payload = jwt.verify(token, secret, { algorithms: [ALGORITHM], issuer: ISSUER });
+      if (typeof payload.sub !== 'string') {
+        return null;
+      }
+      return {
+        userId: payload.sub,
+        sessionId: typeof payload.sid === 'string' ? payload.sid : null,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  return { sign, verify, claims };
 }

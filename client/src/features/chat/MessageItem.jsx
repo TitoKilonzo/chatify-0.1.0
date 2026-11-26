@@ -49,6 +49,8 @@ function MessageItemBase({
   continued,
   senderName,
   isGroup,
+  channel = false,
+  canReply = true,
   names,
   canPin,
   highlighted,
@@ -128,13 +130,15 @@ function MessageItemBase({
   }
 
   const menuItems = [
-    {
-      id: 'reply',
-      label: 'Reply',
-      icon: Reply,
-      onSelect: () => setReply(message.conversationId, message),
-    },
-    isGroup && !message.threadRootId
+    canReply
+      ? {
+          id: 'reply',
+          label: 'Reply',
+          icon: Reply,
+          onSelect: () => setReply(message.conversationId, message),
+        }
+      : null,
+    isGroup && !channel && !message.threadRootId
       ? {
           id: 'thread',
           label: 'Reply in thread',

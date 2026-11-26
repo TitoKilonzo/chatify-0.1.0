@@ -105,6 +105,13 @@ export const refreshTokens = sqliteTable(
     expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
     revokedAt: integer('revoked_at', { mode: 'timestamp_ms' }),
     userAgent: text('user_agent'),
+    // One session (device) is a chain of rotated tokens that share a sessionId. Rows written
+    // before device management have none, and their own id stands in.
+    sessionId: text('session_id'),
+    sessionStartedAt: integer('session_started_at', { mode: 'timestamp_ms' }),
+    lastUsedAt: integer('last_used_at', { mode: 'timestamp_ms' }),
+    // 'rotated' for a normal refresh, 'device' when the user ended the session from the device list.
+    revokedReason: text('revoked_reason'),
     createdAt: createdAt(),
   },
   (table) => [
@@ -181,6 +188,11 @@ export const conversations = sqliteTable(
     disappearAfterSeconds: integer('disappear_after_seconds'),
     // End-to-end encryption for a direct chat: messages are sent as ciphertext the server cannot read.
     encrypted: integer('encrypted', { mode: 'boolean' }).notNull().default(false),
+    // A channel is a group where only owners and admins post and everyone else reads.
+    broadcast: integer('broadcast', { mode: 'boolean' }).notNull().default(false),
+    description: text('description'),
+    // Public channels can be found and joined by anyone. Private ones are invitation only.
+    isPublic: integer('is_public', { mode: 'boolean' }).notNull().default(false),
     lastMessageAt: integer('last_message_at', { mode: 'timestamp_ms' })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -190,6 +202,7 @@ export const conversations = sqliteTable(
     uniqueIndex('conversations_direct_key_unique').on(table.directKey),
     index('conversations_created_by_idx').on(table.createdBy),
     index('conversations_last_message_at_idx').on(table.lastMessageAt),
+    index('conversations_public_channels_idx').on(table.isPublic, table.broadcast),
     check(
       'conversations_direct_key_matches_type',
       sql`(${table.type} = 'direct' AND ${table.directKey} IS NOT NULL) OR (${table.type} = 'group' AND ${table.directKey} IS NULL)`,

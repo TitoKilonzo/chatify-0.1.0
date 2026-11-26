@@ -18,6 +18,7 @@ import {
   useRenameGroup,
   useSetPreferences,
   useSetRole,
+  useUpdateChannel,
 } from './useConversations.js';
 import { DisappearingSetting } from './DisappearingSetting.jsx';
 import { EncryptionSetting } from './EncryptionSetting.jsx';
@@ -63,6 +64,10 @@ function Details({ conversation, meId, section, onClose }) {
         </Button>
       </div>
 
+      {conversation.channel && conversation.role !== 'member' ? (
+        <ChannelSettings conversation={conversation} />
+      ) : null}
+
       <DisappearingSetting conversation={conversation} />
 
       {isGroup ? null : <EncryptionSetting conversation={conversation} />}
@@ -96,6 +101,51 @@ function PersonHeader({ user }) {
   );
 }
 
+/** Description and visibility of a channel, for its owner and admins. */
+function ChannelSettings({ conversation }) {
+  const update = useUpdateChannel(conversation.id);
+  const [description, setDescription] = useState(conversation.description ?? '');
+  const changed = description.trim() !== (conversation.description ?? '');
+
+  return (
+    <section className={styles.section} aria-labelledby="channel-heading">
+      <h3 id="channel-heading" className={styles.sectionTitle}>
+        Channel settings
+      </h3>
+      <Input
+        label="Description"
+        value={description}
+        maxLength={300}
+        onChange={(event) => setDescription(event.target.value)}
+        autoComplete="off"
+      />
+      <div className={styles.toggles}>
+        <Button
+          variant="secondary"
+          disabled={!changed}
+          loading={update.isPending}
+          onClick={() => update.mutate({ description: description.trim() })}
+        >
+          Save description
+        </Button>
+        <Button
+          variant="secondary"
+          loading={update.isPending}
+          onClick={() => update.mutate({ isPublic: !conversation.isPublic })}
+        >
+          {conversation.isPublic ? 'Make private' : 'Make public'}
+        </Button>
+      </div>
+      <p className={styles.muted}>
+        {conversation.isPublic
+          ? 'Anyone can find and join this channel.'
+          : 'Only people you add can join this channel.'}
+      </p>
+      {update.isError ? <Alert>{update.error.message}</Alert> : null}
+    </section>
+  );
+}
+
 function GroupHeader({ conversation }) {
   const rename = useRenameGroup(conversation.id);
   const avatar = useGroupAvatar(conversation.id);
@@ -116,7 +166,10 @@ function GroupHeader({ conversation }) {
         />
         <div>
           <h3 className={styles.name}>{conversation.name}</h3>
-          <p className={styles.muted}>{conversation.memberCount} members</p>
+          <p className={styles.muted}>
+            {conversation.memberCount} {conversation.channel ? 'subscribers' : 'members'}
+          </p>
+          {conversation.description ? <p>{conversation.description}</p> : null}
         </div>
         {canManage ? (
           <div className={styles.heroActions}>
@@ -230,7 +283,11 @@ function GroupManagement({ conversation, meId, section, onLeft }) {
 
       <section aria-labelledby="members-heading">
         <h3 id="members-heading" className={styles.sectionTitle}>
-          Members ({conversation.members.length})
+          {conversation.channel
+            ? conversation.role === 'member'
+              ? 'Admins'
+              : `Subscribers and admins (${conversation.memberCount})`
+            : `Members (${conversation.members.length})`}
         </h3>
         <ul className={styles.members}>
           {conversation.members.map((member) => {
@@ -290,14 +347,14 @@ function GroupManagement({ conversation, meId, section, onLeft }) {
 
       <div className={styles.leave}>
         <Button leadingIcon={LogOut} onClick={() => setConfirmingLeave(true)}>
-          Leave group
+          {conversation.channel ? 'Leave channel' : 'Leave group'}
         </Button>
       </div>
 
       <Dialog
         open={confirmingLeave}
         onClose={() => setConfirmingLeave(false)}
-        title="Leave this group?"
+        title={conversation.channel ? 'Leave this channel?' : 'Leave this group?'}
         size="sm"
         footer={
           <>
@@ -317,7 +374,7 @@ function GroupManagement({ conversation, meId, section, onLeft }) {
                 })
               }
             >
-              Leave group
+              {conversation.channel ? 'Leave channel' : 'Leave group'}
             </Button>
           </>
         }

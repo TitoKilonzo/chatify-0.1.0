@@ -45,6 +45,43 @@ export function useCreateGroup() {
   });
 }
 
+export function useCreateChannel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (values) => (await api.post('/channels', values)).conversation,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: conversationsKey }),
+  });
+}
+
+export function useJoinChannel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id) => (await api.post(`/channels/${id}/join`, {})).conversation,
+    onSuccess: (conversation) => {
+      queryClient.setQueryData(conversationKey(conversation.id), conversation);
+      queryClient.invalidateQueries({ queryKey: conversationsKey });
+      queryClient.invalidateQueries({ queryKey: ['channels'] });
+    },
+  });
+}
+
+export function useUpdateChannel(id) {
+  const cache = useCacheDetail();
+  return useMutation({
+    mutationFn: async (values) => (await api.patch(`/channels/${id}`, values)).conversation,
+    onSuccess: cache,
+  });
+}
+
+/** Public channels matching the text that the person has not joined yet. */
+export function useDiscoverChannels(text, enabled) {
+  return useQuery({
+    queryKey: ['channels', text],
+    queryFn: async () => (await api.get(`/channels?q=${encodeURIComponent(text)}`)).channels,
+    enabled,
+  });
+}
+
 /** Archive or mute, applied to the cache immediately and rolled back if the request fails. */
 export function useSetPreferences() {
   const queryClient = useQueryClient();

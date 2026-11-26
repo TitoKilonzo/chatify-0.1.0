@@ -16,7 +16,10 @@ export function ForwardDialog({ message, onClose }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const conversations = useMemo(
-    () => sortConversations((query.data ?? []).filter((c) => !c.archived)),
+    () =>
+      sortConversations(
+        (query.data ?? []).filter((c) => !c.archived && !(c.channel && c.role === 'member')),
+      ),
     [query.data],
   );
 
