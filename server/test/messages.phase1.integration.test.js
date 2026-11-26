@@ -100,9 +100,8 @@ describe('messages phase 1: replies, reactions, pins, forward, search', () => {
           .toBuffer();
         const firstUpload = await a.client.upload('/api/attachments', image, 'first.png');
         const secondUpload = await a.client.upload('/api/attachments', image, 'second.png');
-        const first = (
-          await send(a, id, 'first', { attachmentId: firstUpload.body.attachment.id })
-        ).body.message;
+        const first = (await send(a, id, 'first', { attachmentId: firstUpload.body.attachment.id }))
+          .body.message;
         await send(a, id, 'second', { attachmentId: secondUpload.body.attachment.id });
         await a.client.delete(`/api/messages/${first.id}`);
 

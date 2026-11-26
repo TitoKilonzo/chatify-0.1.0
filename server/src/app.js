@@ -198,7 +198,11 @@ export function createApp({
     requireAuth,
     createChannelsRouter({ conversationsService: container.conversationsService }),
   );
-  app.use('/api/calls', requireAuth, createCallsRouter({ env, callsService: container.callsService }));
+  app.use(
+    '/api/calls',
+    requireAuth,
+    createCallsRouter({ env, callsService: container.callsService }),
+  );
   app.use('/api/push', createPushRouter({ pushService: container.pushService, requireAuth }));
   app.use(
     '/api/conversations',

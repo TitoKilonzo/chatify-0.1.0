@@ -112,10 +112,7 @@ export function createCallsService({
           startedAt: new Date(call.createdAt),
         });
       } catch (err) {
-        calls.delete(call.id);
-        byUser.delete(userId);
-        byUser.delete(calleeId);
-        throw err;
+        logger?.error({ err, callId: call.id }, 'call history creation failed');
       }
       timers.set(call.id, {
         ring: setTimeout(() => {
@@ -164,9 +161,7 @@ export function createCallsService({
       try {
         await callsRepository?.markAnswered(call.id, new Date(call.answeredAt));
       } catch (err) {
-        call.state = 'ringing';
-        call.answeredAt = null;
-        throw err;
+        logger?.error({ err, callId: call.id }, 'call markAnswered failed');
       }
       clearTimeout(timers.get(callId)?.ring);
       events.publish('call.accepted', { call });
@@ -177,9 +172,7 @@ export function createCallsService({
       const rows = await callsRepository?.listForUser(userId, 100);
       const history = rows ?? [];
       const peerIds = [
-        ...new Set(
-          history.map((row) => (row.callerId === userId ? row.calleeId : row.callerId)),
-        ),
+        ...new Set(history.map((row) => (row.callerId === userId ? row.calleeId : row.callerId))),
       ];
       const peers = await usersRepository.findManyByIds(peerIds);
       const byId = new Map(peers.map((peer) => [peer.id, peer]));

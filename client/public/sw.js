@@ -46,10 +46,7 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  if (
-    request.method !== 'GET' ||
-    new URL(request.url).origin !== self.location.origin
-  ) {
+  if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) {
     return;
   }
   const url = new URL(request.url);

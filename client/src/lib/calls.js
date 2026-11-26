@@ -88,10 +88,9 @@ async function openMedia(video) {
       throw new Error('Allow microphone access to make calls.', { cause: err });
     }
     if (err?.name === 'NotFoundError') {
-      throw new Error(
-        video ? 'No microphone or camera was found.' : 'No microphone was found.',
-        { cause: err },
-      );
+      throw new Error(video ? 'No microphone or camera was found.' : 'No microphone was found.', {
+        cause: err,
+      });
     }
     if (err?.name === 'NotReadableError') {
       throw new Error('The microphone or camera is already in use.', { cause: err });

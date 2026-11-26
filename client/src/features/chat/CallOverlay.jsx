@@ -18,6 +18,9 @@ function useStream(ref, stream) {
   useEffect(() => {
     if (ref.current && ref.current.srcObject !== stream) {
       ref.current.srcObject = stream;
+      if (stream) {
+        ref.current.play?.().catch(() => {});
+      }
     }
   }, [ref, stream]);
 }
