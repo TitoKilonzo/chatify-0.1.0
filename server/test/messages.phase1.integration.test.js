@@ -103,9 +103,7 @@ describe('messages phase 1: replies, reactions, pins, forward, search', () => {
         const first = (
           await send(a, id, 'first', { attachmentId: firstUpload.body.attachment.id })
         ).body.message;
-        const second = (
-          await send(a, id, 'second', { attachmentId: secondUpload.body.attachment.id })
-        ).body.message;
+        await send(a, id, 'second', { attachmentId: secondUpload.body.attachment.id });
         await a.client.delete(`/api/messages/${first.id}`);
 
         const response = await b.client.get(`/api/conversations/${id}/media`);

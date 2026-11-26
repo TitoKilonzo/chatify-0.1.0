@@ -88,19 +88,23 @@ async function openMedia(video) {
       throw new Error('Allow microphone access to make calls.', { cause: err });
     }
     if (err?.name === 'NotFoundError') {
-      throw new Error('No microphone was found.', { cause: err });
+      throw new Error(
+        video ? 'No microphone or camera was found.' : 'No microphone was found.',
+        { cause: err },
+      );
+    }
+    if (err?.name === 'NotReadableError') {
+      throw new Error('The microphone or camera is already in use.', { cause: err });
     }
     throw new Error('Could not start your microphone or camera.', { cause: err });
   }
 }
 
 async function createConnection(callId) {
-  let iceServers = [];
-  try {
-    iceServers = (await api.get('/calls/ice')).iceServers;
-  } catch {
-    // Without a config the browser still tries direct paths on the local network.
+  if (typeof RTCPeerConnection === 'undefined') {
+    throw new Error('Calls are not supported in this browser.');
   }
+  const { iceServers } = await api.get('/calls/ice');
   const connection = new RTCPeerConnection({ iceServers });
   pc = connection;
   for (const track of store().localStream.getTracks()) {
@@ -122,7 +126,7 @@ async function createConnection(callId) {
     if (connection.connectionState === 'connected') {
       store().set({ phase: 'active' });
     } else if (connection.connectionState === 'failed') {
-      hangUp('The connection failed. Check your network and try again.');
+      hangUp('Could not connect. Check the network or TURN server configuration and try again.');
     }
   };
   return connection;
@@ -199,7 +203,16 @@ export async function acceptCall() {
     cleanup(res.error?.message ?? 'Could not answer the call.');
     return;
   }
-  await createConnection(call.id);
+  try {
+    await createConnection(call.id);
+  } catch (err) {
+    await emit('call:end', { callId: call.id });
+    cleanup(
+      err instanceof Error
+        ? `Could not set up the call: ${err.message}`
+        : 'Could not set up the call.',
+    );
+  }
 }
 
 /** Decline, cancel, or hang up. */
@@ -258,8 +271,12 @@ export function bindCalls(socket, meId) {
           callId: call.id,
           data: { description: connection.localDescription.toJSON() },
         });
-      } catch {
-        hangUp('Could not set up the call.');
+      } catch (err) {
+        hangUp(
+          err instanceof Error
+            ? `Could not set up the call: ${err.message}`
+            : 'Could not set up the call.',
+        );
       }
     } else if (call.calleeId === me && current.phase === 'ringing-in') {
       // Answered on another device or tab.
@@ -268,7 +285,13 @@ export function bindCalls(socket, meId) {
   });
 
   socket.on('call:signal', (payload) => {
-    onSignal(payload).catch(() => hangUp('The call could not be connected.'));
+    onSignal(payload).catch((err) =>
+      hangUp(
+        err instanceof Error
+          ? `The call could not be connected: ${err.message}`
+          : 'The call could not be connected.',
+      ),
+    );
   });
 
   socket.on('call:ended', ({ call, reason, endedBy }) => {

@@ -4,6 +4,7 @@ import { EventEmitter } from 'node:events';
 const socket = new EventEmitter();
 socket.connected = true;
 const sent = [];
+const { getIceConfig } = vi.hoisted(() => ({ getIceConfig: vi.fn() }));
 const defaultTimeout = () => ({
   emitWithAck: async (event, payload) => {
     sent.push({ event, payload });
@@ -20,7 +21,7 @@ const defaultTimeout = () => ({
 vi.mock('../src/lib/socket.js', () => ({ getSocket: () => socket }));
 vi.mock('../src/lib/ringtone.js', () => ({ startRinging: vi.fn(), stopRinging: vi.fn() }));
 vi.mock('../src/lib/api.js', () => ({
-  api: { get: vi.fn(async () => ({ iceServers: [{ urls: ['stun:example'] }] })) },
+  api: { get: getIceConfig },
 }));
 
 class FakeTrack {
@@ -88,6 +89,8 @@ let streams;
 beforeEach(async () => {
   vi.resetModules();
   sent.length = 0;
+  getIceConfig.mockReset();
+  getIceConfig.mockResolvedValue({ iceServers: [{ urls: ['stun:example'] }] });
   socket.timeout = defaultTimeout;
   socket.removeAllListeners();
   streams = [];
@@ -185,6 +188,17 @@ describe('calls (caller)', () => {
     await expect(calls.startCall('conv', false)).rejects.toThrow('Allow microphone access');
     expect(calls.useCall.getState().phase).toBe('idle');
   });
+
+  it('shows ICE configuration errors instead of failing silently', async () => {
+    await calls.startCall('conv', false);
+    getIceConfig.mockRejectedValueOnce(new Error('ICE settings are unavailable'));
+    socket.emit('call:accepted', { call: { id: 'c1', callerId: 'me', calleeId: 'you' } });
+    await tick();
+
+    expect(calls.useCall.getState().phase).toBe('idle');
+    expect(calls.useCall.getState().notice).toContain('ICE settings are unavailable');
+    expect(streams[0].getTracks().every((track) => track.stopped)).toBe(true);
+  });
 });
 
 describe('calls (callee)', () => {
@@ -207,6 +221,18 @@ describe('calls (callee)', () => {
     expect(connection.remoteDescription.type).toBe('offer');
     const answer = sent.filter((s) => s.event === 'call:signal').at(-1);
     expect(answer.payload.data.description.type).toBe('answer');
+  });
+
+  it('ends a call cleanly when ICE settings fail while answering', async () => {
+    socket.emit('call:incoming', { call: incoming });
+    getIceConfig.mockRejectedValueOnce(new Error('ICE settings are unavailable'));
+
+    await calls.acceptCall();
+
+    expect(calls.useCall.getState().phase).toBe('idle');
+    expect(calls.useCall.getState().notice).toContain('ICE settings are unavailable');
+    expect(sent.some((item) => item.event === 'call:end')).toBe(true);
+    expect(streams[0].getTracks().every((track) => track.stopped)).toBe(true);
   });
 
   it('declining tells the server and returns to idle', async () => {

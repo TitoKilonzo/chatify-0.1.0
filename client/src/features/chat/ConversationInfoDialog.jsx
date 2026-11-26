@@ -153,6 +153,8 @@ function SharedMedia({ conversationId }) {
                   aria-label={attachment.name}
                 />
               ) : attachment.mimeType.startsWith('audio/') ? (
+                // User-uploaded audio does not include caption metadata.
+                // eslint-disable-next-line jsx-a11y/media-has-caption
                 <audio src={attachment.url} controls aria-label={attachment.name} />
               ) : (
                 <a className={styles.mediaFile} href={attachment.url} download={attachment.name}>
