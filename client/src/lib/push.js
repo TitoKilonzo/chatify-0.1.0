@@ -22,7 +22,7 @@ function keyToBytes(base64Url) {
 }
 
 async function registration() {
-  return navigator.serviceWorker.ready;
+  return navigator.serviceWorker.getRegistration();
 }
 
 /** Whether this browser currently has a subscription. */
@@ -30,7 +30,8 @@ export async function currentSubscription() {
   if (!pushSupported()) {
     return null;
   }
-  return (await registration()).pushManager.getSubscription();
+  const reg = await registration();
+  return reg ? reg.pushManager.getSubscription() : null;
 }
 
 export async function enablePush() {
@@ -38,13 +39,16 @@ export async function enablePush() {
   if (!enabled) {
     throw new Error('Notifications are not set up on this server.');
   }
+  const reg = await registration();
+  if (!reg?.active) {
+    throw new Error('Notifications are not ready yet. Reload the page and try again.');
+  }
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') {
     throw new Error(
       'Notifications are blocked. Allow them in your browser settings to turn this on.',
     );
   }
-  const reg = await registration();
   const subscription =
     (await reg.pushManager.getSubscription()) ??
     (await reg.pushManager.subscribe({
